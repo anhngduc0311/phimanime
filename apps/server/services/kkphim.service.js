@@ -1,3 +1,5 @@
+import { ANIME_GENRES, genreKey, mergeGenreOptions, matchesGenre } from '../../../shared/genres.js';
+import { movieIdentityKeys, compatibleMovie } from '../../../shared/movieIdentity.js';
 import { pool } from '../db/db.js';
 import { seriesKey, seriesTitle, seasonNumber, groupSeries, seriesAliases } from '../../../shared/series.js';
 import { AdminAnimeModel } from '../models/adminAnime.model.js';
@@ -207,14 +209,64 @@ export async function trendingCatalog(page = 1, limit = 12, request = kkRequest)
   return { data: eligible.slice((page - 1) * limit, end), pagination: { page, limit, hasMore: eligible.length > end } };
 }
 
-export async function genreOptions(request = kkRequest) {
-  const json = await request('/the-loai');
-  if (!Array.isArray(json.data?.items)) throw new Error('Danh sách thể loại không hợp lệ');
-  return json.data.items.filter(item => slugOK(item.slug)).map(({ name, slug }) => ({ name, slug }));
+export async function genreOptions(request = kkRequest, animeRequest) {
+  if (request !== kkRequest && !animeRequest) {
+    const json = await request('/the-loai');
+    if (!Array.isArray(json.data?.items)) throw new Error('Danh sách thể loại không hợp lệ');
+    return mergeGenreOptions(json.data.items.filter(item => slugOK(item.slug)));
+  }
+  const results = await Promise.allSettled([
+    request('/the-loai'),
+    animeRequest ? animeRequest() : (async () => {
+      const { anime47Genres } = await import('./anime47.service.js');
+      return anime47Genres();
+    })()
+  ]);
+  const primary = results[0].value?.data?.items;
+  const anime = results[1].value;
+  if (!Array.isArray(primary) && !Array.isArray(anime)) throw new Error('Danh sách thể loại không hợp lệ');
+  return mergeGenreOptions(Array.isArray(primary) ? primary.filter(item => slugOK(item.slug)) : [], Array.isArray(anime) ? anime : ANIME_GENRES);
+}
+
+async function animeGenreEntries(id) {
+  return remember('anime47-genre-entries-v2:' + id, async () => {
+    const { loadAnime47GenreEntries } = await import('./anime47.service.js');
+    return loadAnime47GenreEntries(id);
+  }, { freshMs: 5 * 60 * 1000, staleMs: 24 * 60 * 60 * 1000 });
+}
+
+export async function loadGenreEntries(categories, dependencies = {}) {
+  const options = await (dependencies.options || genreOptions)();
+  const selected = [...new Set(categories.map(genreKey))].map(key => options.find(option => option.slug === key));
+  if (!selected.length || selected.some(option => !option)) throw Object.assign(new Error('Vui lòng chọn thể loại hợp lệ'), { status: 400 });
+  const primaryLoad = dependencies.primary || loadBrowseEntries;
+  const animeLoad = dependencies.anime || animeGenreEntries;
+  const tasks = [];
+  if (selected.every(option => option.primarySlugs?.length)) {
+    tasks.push(primaryLoad('/v1/api/danh-sach/hoat-hinh', { country: 'nhat-ban', category: selected[0].primarySlugs[0] })
+      .then(items => items.filter(item => selected.every(option => matchesGenre(item, option.slug)))));
+  }
+  if (selected.every(option => option.anime47Ids?.length)) {
+    tasks.push((async () => {
+      let matches;
+      // Intersect provider results as some upstream demographic/adult tags
+      // are absent from post metadata, despite being filterable by genre ID.
+      for (const option of selected) {
+        const entries = (await Promise.all(option.anime47Ids.map(animeLoad))).flat();
+        const ids = new Set(entries.map(item => item.id));
+        matches = matches ? matches.filter(item => ids.has(item.id)) : entries;
+      }
+      return matches || [];
+    })());
+  }
+  if (!tasks.length) return [];
+  const results = await Promise.allSettled(tasks);
+  if (results.every(result => result.status === 'rejected')) throw new Error('Không tải được danh sách phim theo thể loại');
+  return [...new Map(results.flatMap(result => result.status === 'fulfilled' ? result.value : []).map(item => [item.id, item])).values()];
 }
 
 export async function genreCatalog(categories, page = 1, limit = 12, request = kkRequest) {
-  const chosen = [...new Set(categories)];
+  const chosen = [...new Set(categories.map(genreKey))];
   const options = await genreOptions(request);
   if (!chosen.length || chosen.some(slug => !options.some(option => option.slug === slug))) {
     const error = new Error('Vui lòng chọn thể loại hợp lệ');
@@ -223,6 +275,10 @@ export async function genreCatalog(categories, page = 1, limit = 12, request = k
   }
   page = Math.min(100, Math.max(1, parseInt(page) || 1));
   limit = Math.min(24, Math.max(1, parseInt(limit) || 12));
+  if (request === kkRequest) {
+    const result = paginateBrowseSeries(await loadGenreEntries(chosen), { page, limit, sort: 'updated' });
+    return { data: result.items, pagination: result.pagination };
+  }
   const end = page * limit;
   const series = new Map();
   let upstreamPage = 1, totalPages = 1;
@@ -304,8 +360,9 @@ export async function browseCatalog(params = {}) {
     const { searchAnime47 } = await import('./anime47.service.js');
     return searchAnime47(keyword);
   }).catch(() => []) : Promise.resolve([]);
-  let items = keyword ? await searchMeili(keyword) : null;
-  if (!items?.length) {
+  const selectedCategories = category.split(',').filter(Boolean);
+  let items = keyword ? await searchMeili(keyword) : selectedCategories.length ? await loadGenreEntries(selectedCategories) : null;
+  if (!items || (!selectedCategories.length && !items.length)) {
     const results = await Promise.allSettled([
       loadBrowseEntries(path, query),
       keyword ? discoverNguonc() : Promise.resolve([])
@@ -330,15 +387,14 @@ export async function browseCatalog(params = {}) {
     return override ? applyAnimeOverride(m, override) : m;
   });
   if (keyword && category) {
-    const slug = text => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    items = items.filter(m => (m.genres || []).some(g => slug(g) === category));
+    items = items.filter(m => selectedCategories.every(category => matchesGenre(m, category)));
   }
   if (year) items = items.filter(m => String(m.year) === String(year));
   if (status === 'completed') items = items.filter(m => m.status === 'Finished Airing');
   if (status === 'ongoing') items = items.filter(m => m.status === 'Currently Airing');
   // Key includes freshly applied overrides and upstream contents. Admin edits,
   // hidden titles and refreshed data cannot reuse an obsolete grouped result.
-  const grouped = await remember('browse-grouped:' + cacheKey({ items, sort }),
+  const grouped = await remember('browse-grouped:v2:' + cacheKey({ items, sort }),
     async () => paginateBrowseSeries(items, { sort, page: 1, limit: Math.max(1, items.length) }).items);
   const totalItems = grouped.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / limitNum));
@@ -384,17 +440,27 @@ export function paginateBrowseSeries(items, { sort = 'updated', page = 1, limit 
   const groups = [];
   const aliases = new Map();
   const aliasesWithoutId = new Map();
+  const movieAliases = new Map();
   for (const item of groupSeries(sorted)) {
     // Index normalized aliases once instead of normalizing every pair of titles.
     // Preserve the first matching representative, and never merge distinct IDs.
     const titles = seriesAliases(item).filter(title => title.length > 3);
     const candidates = item.seriesId ? aliasesWithoutId : aliases;
     let index = Infinity;
-    if (!item.isMovie) {
+    if (item.isMovie) {
+      for (const key of movieIdentityKeys(item)) {
+        for (const position of movieAliases.get(key) || []) {
+          if (compatibleMovie(groups[position], item)) index = Math.min(index, position);
+        }
+      }
+    } else {
       for (const title of titles) index = Math.min(index, candidates.get(title) ?? Infinity);
     }
     const existing = groups[index];
-    if (existing) existing.seasons.push(...item.seasons);
+    if (existing) {
+      existing.seasons.push(...item.seasons);
+      if (!existing.year && item.year) existing.year = item.year;
+    }
     else {
       const position = groups.length;
       groups.push(item);
@@ -403,10 +469,18 @@ export function paginateBrowseSeries(items, { sort = 'updated', page = 1, limit 
         if (!item.seriesId && !aliasesWithoutId.has(title)) aliasesWithoutId.set(title, position);
       }
     }
+    if (item.isMovie) {
+      const position = existing ? index : groups.length - 1;
+      for (const key of movieIdentityKeys(item)) {
+        const positions = movieAliases.get(key) || [];
+        if (!positions.includes(position)) positions.push(position);
+        movieAliases.set(key, positions);
+      }
+    }
   }
   const grouped = groups.map(item => ({
     ...item,
-    seasonCount: new Set(item.seasons.map(seasonNumber)).size,
+    seasonCount: item.isMovie ? 1 : new Set(item.seasons.map(seasonNumber)).size,
     title: item.isMovie ? item.title : Object.fromEntries(Object.entries(item.title).map(([key, title]) => [key, seriesTitle(title)]))
   }));
   const totalItems = grouped.length;

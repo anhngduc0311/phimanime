@@ -259,11 +259,13 @@ async function renderSourceChoices(anime, episodeNumber) {
   const container = document.getElementById('player-source-options');
   const render = sources => {
     container.replaceChildren();
-    for (const source of sources) {
+    const order = { Anime47: 0, NguonC: 1, AniDoki: 2 };
+    const sorted = [...sources].sort((a, b) => (order[a.source] ?? 3) - (order[b.source] ?? 3) || a.id.localeCompare(b.id));
+    for (const [index, source] of sorted.entries()) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `prov-btn${source.id === anime.id ? ' active' : ''}`;
-      button.textContent = providerLabel(source.source);
+      button.textContent = `Server ${index + 1}`;
       button.setAttribute('aria-pressed', String(source.id === anime.id));
       button.addEventListener('click', () => {
         if (source.id !== anime.id) router.navigate(`/watch/${source.id}/${episodeNumber}`);

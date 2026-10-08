@@ -2,10 +2,10 @@ export function validEmbed(value, provider) {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return false;
-    if (provider === 'NguonC') return /^embed\d+\.streamc\.xyz$/.test(url.hostname) && url.pathname === '/embed.php';
+    if (provider === 'NguonC') return /^embed\d*\.streamc\.xyz$/.test(url.hostname) && url.pathname === '/embed.php';
     if (provider === 'Anime47') {
       return (url.origin === 'https://player.phimapi.com' && url.pathname === '/player/') ||
-             (/^embed\d+\.streamc\.xyz$/.test(url.hostname) && url.pathname === '/embed.php');
+             (/^embed\d*\.streamc\.xyz$/.test(url.hostname) && url.pathname === '/embed.php');
     }
     return provider === 'AniDoki' && url.origin === 'https://player.phimapi.com' && url.pathname === '/player/';
   } catch { return false; }

@@ -20,6 +20,24 @@ test('alias index preserves first-match grouping without merging different known
 });
 
 const entry = (id, seriesId, season, year, updatedAt) => ({ id, seriesId, seasonNumber: season, year, updatedAt, title: { english: `Show ${seriesId} (Season ${season})` }, source: 'AniDoki' });
+test('search deduplicates translated movie copies before pagination without combining sequels or OVA with TV', () => {
+  const movie = (id, title, year, aliases = []) => ({ id, title: { english: title }, isMovie: true, year, aliases });
+  const items = [
+    movie('two-a', 'Trinity Seven Movie 2: Tenkuu Toshokan to Shinku no Maou', 2019),
+    movie('two-b', 'Gekijouban Trinity Seven 2', 2019, ['Trinity Seven Movie 2: Tenkuu Toshokan to Shinku no Maou']),
+    movie('two-c', 'Trinity Seven Movie 2', null),
+    movie('one-a', 'Trinity Seven Movie 1: Eternity Library to Alchemic Girl', 2017),
+    movie('one-b', 'Trinity Seven Movie: Eternity Library to Alchemic Girl', null),
+    movie('ova', 'Trinity Seven OVA', 2015),
+    { id: 'tv', title: { english: 'Trinity Seven' }, isMovie: false }
+  ];
+  const result = paginateBrowseSeries(items, { limit: 2 });
+  assert.equal(result.pagination.totalItems, 4);
+  assert.equal(result.pagination.totalPages, 2);
+  assert.equal(paginateBrowseSeries(items, { page: 2, limit: 2 }).items.length, 2);
+  assert.ok(paginateBrowseSeries(items).items.some(item => item.seasons.length === 3));
+  assert.equal(paginateBrowseSeries([movie('old', 'Same Movie', 2001), movie('remake', 'Same Movie', 2025)]).items.length, 2);
+});
 test('browse groups before pagination, preserves sort and counts series rather than seasons', () => {
   const items = [entry('a2', 'a', 2, 2026, '2026-10-04'), entry('b', 'b', 1, 2025, '2026-10-03'), entry('a1', 'a', 1, 2020, '2026-01-01'), entry('c', 'c', 1, 2024, '2026-10-02')];
   const first = paginateBrowseSeries(items, { page: 1, limit: 2 });

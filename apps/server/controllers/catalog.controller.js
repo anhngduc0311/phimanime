@@ -17,7 +17,7 @@ import { anime47MediaUrl } from '../services/anime47Media.service.js';
 import { allowedAnime47Subtitle, anime47SubtitleUrl } from '../services/anime47Subtitle.service.js';
 import { ConfigModel } from '../models/config.model.js';
 import { pool } from '../db/db.js';
-import { allRelatedSeasons } from '../services/catalogSources.service.js';
+import { allRelatedSeasons, allRelatedTitles } from '../services/catalogSources.service.js';
 
 const send = (res, data) => res.json({ success: true, data, total: Array.isArray(data) ? data.length : undefined });
 
@@ -202,6 +202,16 @@ export const CatalogController = {
     } catch (err) {
       const status = err.status && [400, 401, 403, 404, 409, 429].includes(err.status) ? err.status : 502;
       res.status(status).json({ success: false, message: err.message || 'Không tải được các mùa phim' });
+    }
+  },
+
+  async getRelatedTitles(req, res) {
+    try {
+      const id = req.params.id;
+      const detail = id.startsWith('anime47-') ? await anime47Detail(id) : await movieDetail(id);
+      send(res, await allRelatedTitles(detail));
+    } catch (error) {
+      res.status(502).json({ success: false, message: 'Không tải được phim liên quan.' });
     }
   },
 

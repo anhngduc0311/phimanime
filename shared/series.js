@@ -1,7 +1,8 @@
 // Prefer provider series IDs; only remove explicit season markers in title fallback.
 const marker = /\s*[([]?\s*(?:season|phần|mùa|ss)\s*(\d+)\s*[)\]]?/giu;
+const normalizeSeason = title => title.replace(/\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, 'Season $1');
 export function seriesTitle(title = '') {
-  return title.replace(marker, ' ').replace(/\s+/g, ' ').trim();
+  return normalizeSeason(title).replace(marker, ' ').replace(/\s+/g, ' ').trim();
 }
 export function seriesKey(anime) {
   if (anime.isMovie || anime.format === 'MOVIE') return `movie:${anime.id}`;
@@ -10,7 +11,7 @@ export function seriesKey(anime) {
     // Some AniDoki entries append the season to the TMDB series ID.
     // Only strip a numeric suffix when it matches this entry's known season.
     const suffixed = id.match(/^(\d+)-(\d+)$/);
-    const knownSeason = `${anime.title?.vietnamese || ''} ${anime.title?.english || ''}`.match(/(?:season|phần|mùa|ss)\s*(\d+)/iu)?.[1] || anime.seasonNumber;
+    const knownSeason = normalizeSeason(`${anime.title?.vietnamese || ''} ${anime.title?.english || ''}`).match(/(?:season|phần|mùa|ss)\s*(\d+)/iu)?.[1] || anime.seasonNumber;
     return `tv:${suffixed && Number(knownSeason) === Number(suffixed[2]) ? suffixed[1] : id}`;
   }
   const title = seriesTitle(anime.title?.vietnamese || anime.title?.english || '');
@@ -27,7 +28,7 @@ export function groupSeries(items) {
   return [...groups.values()];
 }
 export function seasonNumber(anime) {
-  const explicit = `${anime.title?.vietnamese || ''} ${anime.title?.english || ''}`.match(/(?:season|phần|mùa|ss)\s*(\d+)/iu);
+  const explicit = normalizeSeason(`${anime.title?.vietnamese || ''} ${anime.title?.english || ''}`).match(/(?:season|phần|mùa|ss)\s*(\d+)/iu);
   return Number(explicit?.[1] || anime.seasonNumber) || 1;
 }
 

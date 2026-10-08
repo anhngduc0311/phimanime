@@ -1,3 +1,4 @@
+import { ANIME_GENRES } from '../../../shared/genres.js';
 import { normalizeProviderAnime } from '../../../shared/providers.js';
 import { seriesKey, seriesTitle, seasonNumber } from '../../../shared/series.js';
 import { kkRequest, mapMovie, extractEpisodes } from './kkphim.service.js';
@@ -136,7 +137,7 @@ export async function anime47Request(path) {
 export function mapAnime47(item) {
   if (!item) return null;
 
-  const isMovie = item.type?.toUpperCase() === 'MOVIE';
+  const isMovie = item.type?.toUpperCase() === 'MOVIE' || /\b(?:movie|gekijouban)\b/i.test(item.title || '');
   const titles = Array.isArray(item.titles) ? item.titles : [];
 
   const engTitleObj = titles.find(t => t.language?.toLowerCase() === 'english');
@@ -155,8 +156,9 @@ export function mapAnime47(item) {
   const currentEpMatch = rawEp.match(/\d+/)?.[0];
   const currentEp = currentEpMatch || (isMovie ? 'Full' : (rawEp || '1'));
   const totalEp = Number(item.episodes) || null;
-  const genres = Array.isArray(item.genres) && item.genres.length
-    ? item.genres.map(g => (typeof g === 'string' ? g : g.name)).filter(Boolean)
+  const allGenres = [...(item.genres || []), ...(item.themes || []), ...(item.demographics || []), ...(item.explicit_genres || [])];
+  const genres = allGenres.length
+    ? allGenres.map(g => (typeof g === 'string' ? g : g.name)).filter(Boolean)
     : ['Anime', 'Hoạt Hình'];
 
   const seasonMatch = `${item.title} ${english}`.match(/(?:season|phần|mùa|ss)\s*(\d+)|(\d+)(?:st|nd|rd|th)\s*season/iu);
@@ -174,7 +176,7 @@ export function mapAnime47(item) {
   const slug = item.slug || String(item.id || '');
   const id = slug ? (slug.startsWith('anime47-') ? slug : `anime47-${slug}`) : `anime47-${item.id}`;
 
-  const year = Number(item.year) || (item.aired_from ? new Date(item.aired_from).getFullYear() : new Date().getFullYear());
+  const year = Number(item.year) || (item.aired_from ? new Date(item.aired_from).getFullYear() : null);
   const description = (item.synopsis || item.description || '')
     .replace(/<[^>]*>/g, '')
     .replace(/&quot;/g, '"')
@@ -200,8 +202,8 @@ export function mapAnime47(item) {
     format: isMovie ? 'MOVIE' : (item.type?.toUpperCase() || 'TV'),
     score,
     year,
-    startDate: String(year),
-    season: String(item.season || year),
+    startDate: year ? String(year) : null,
+    season: item.season ? String(item.season) : year ? String(year) : null,
     status: item.status?.toLowerCase() === 'completed' ? 'Finished Airing' : 'Currently Airing',
     duration: isMovie ? 'Movie' : (item.duration && item.duration !== 'Unknown' ? item.duration : '24m/tập'),
     totalEpisodes: totalEp,
@@ -538,6 +540,37 @@ export function extractAnime47Episodes(payload) {
     }
   }
   return [...episodes.values()].sort((a, b) => a.number - b.number);
+}
+
+export async function anime47Genres(request = anime47Request) {
+  const result = await request('/genres');
+  if (!Array.isArray(result)) throw new Error('Danh sách thể loại không hợp lệ');
+  return result;
+}
+
+export async function loadAnime47FantasyEntries(request = anime47Request) {
+  return loadAnime47GenreEntries(8, request);
+}
+
+export async function loadAnime47GenreEntries(id, request = anime47Request) {
+  if (!Number.isInteger(Number(id)) || Number(id) < 1) throw new Error('Thể loại không hợp lệ');
+  const getPage = async page => {
+    const result = await request(`/anime/filter?genres=${id}&sort=latest&page=${page}`);
+    if (!Array.isArray(result.data?.posts)) throw new Error('Không tải được danh sách phim theo thể loại');
+    return result.data;
+  };
+  const first = await getPage(1);
+  const pages = [first];
+  const totalPages = Number(first.pagination?.last_page) || 1;
+  for (let page = 2; page <= totalPages; page += 4) {
+    pages.push(...await Promise.all(Array.from({ length: Math.min(4, totalPages - page + 1) }, (_, i) => getPage(page + i))));
+  }
+  return pages.flatMap(page => page.posts).map(raw => {
+    const item = mapAnime47(raw);
+    const genre = ANIME_GENRES.find(genre => genre.id === Number(id));
+    if (genre && !item.genres.includes(genre.name)) item.genres.push(genre.name);
+    return item;
+  });
 }
 
 export async function anime47EpisodeSource(id, request = anime47Request) {

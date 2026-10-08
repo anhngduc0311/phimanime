@@ -47,12 +47,14 @@ export function mapNguonc(movie) {
 
 export function extractNguoncEpisodes(movie) {
   const episodes = new Map();
+  const standalone = categories(movie, 'Định dạng').includes('Phim lẻ');
   for (const server of movie.episodes || []) {
     if (!/vietsub/i.test(server.server_name)) continue;
     for (const ep of server.items || []) {
-      const number = Number(ep.name?.match(/^(?:tập\s*)?(\d+)$/iu)?.[1]);
+      const number = Number(ep.name?.match(/^(?:tập\s*)?(\d+)$/iu)?.[1]) ||
+        (standalone && /^(?:full|movie)$/i.test(ep.name?.trim() || '') ? 1 : 0);
       if (!number || !validEmbed(ep.embed, 'NguonC') || episodes.has(number)) continue;
-      episodes.set(number, { number, id: ep.slug, title: `Tập ${ep.name}`, embed: ep.embed, duration: movie.time || '' });
+      episodes.set(number, { number, id: ep.slug, title: standalone && /^(?:full|movie)$/i.test(ep.name?.trim() || '') ? 'Full' : `Tập ${ep.name}`, embed: ep.embed, duration: movie.time || '' });
     }
   }
   return [...episodes.values()].sort((a, b) => a.number - b.number);

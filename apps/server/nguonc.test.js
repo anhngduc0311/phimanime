@@ -42,6 +42,19 @@ test('NguonC episodes retain episode numbers, deduplicate mirrors and reject uns
   assert.deepEqual(result.map(e => e.number), [1, 3]);
   for (const url of ['http://embed1.streamc.xyz/embed.php', 'https://embed1.streamc.xyz.evil.test/embed.php', 'javascript:alert(1)', 'https://user@embed1.streamc.xyz/embed.php']) assert.equal(validEmbed(url, 'NguonC'), false);
   assert.equal(validEmbed('https://embed14.streamc.xyz/embed.php?hash=test', 'NguonC'), true);
+  assert.equal(validEmbed('https://embed.streamc.xyz/embed.php?hash=test', 'NguonC'), true);
+});
+
+test('standalone movies expose the Full Vietsub source as episode one', () => {
+  const movie = {
+    category: { format: { group: { name: 'Định dạng' }, list: [{ name: 'Phim lẻ' }] } },
+    episodes: [{ server_name: 'Vietsub #1', items: [{ name: 'Full', slug: 'full', embed: 'https://embed.streamc.xyz/embed.php?hash=test' }] }]
+  };
+  const episodes = extractNguoncEpisodes(movie);
+  assert.equal(episodes.length, 1);
+  assert.equal(episodes[0].number, 1);
+  assert.equal(episodes[0].title, 'Full');
+  assert.equal(extractNguoncEpisodes({ ...movie, category: {} }).length, 0);
 });
 
 test('search hydrates category-free summaries, pages results, tolerates a bad detail and excludes live action', async () => {

@@ -4,6 +4,16 @@ import { groupSeries, seriesKey, seriesTitle, seasonNumber } from '../../shared/
 import { mapMovie, relatedSeasons } from './kkphim.js';
 
 const raw = (slug, season, id = '134667') => ({ slug, name: `Chuyển Sinh Thành Kiếm (Phần ${season})`, origin_name: `Reincarnated As A Sword (Season ${season})`, type: 'hoathinh', tmdb: { id, type: 'tv', season } });
+test('ordinal season names use the base search title and keep their season number', () => {
+  const base = 'Kikansha no Mahou wa Tokubetsu desu';
+  assert.equal(seriesTitle(base + ' 2nd Season'), base);
+  assert.equal(seasonNumber({ title: { english: base + ' 2nd Season' }, seasonNumber: 1 }), 2);
+  assert.equal(groupSeries([
+    { id: 'first', title: { english: base } },
+    { id: 'second', title: { english: base + ' 2nd Season' } }
+  ]).length, 1);
+  assert.equal(seriesTitle('Mobile Suit Gundam 00'), 'Mobile Suit Gundam 00');
+});
 test('home collapses seasons using series identity while retaining representative and all slugs', () => {
   const second = mapMovie(raw('sword-two', 2));
   const first = mapMovie(raw('sword-one', 1));

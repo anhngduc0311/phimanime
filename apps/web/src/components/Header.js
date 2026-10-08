@@ -1,3 +1,4 @@
+import { mergeGenreOptions } from '../../../../shared/genres.js';
 import { AniDokiAPI } from '../api.js';
 import { state } from '../store/state.js';
 import { router } from '../router.js';
@@ -76,7 +77,8 @@ export function initMobileBottomNav() {
   }, { passive: true });
 }
 
-export const DEFAULT_GENRES = [
+export const DEFAULT_GENRES = mergeGenreOptions([
+  { name: 'Fantasy', slug: 'fantasy' },
   { name: 'Hành Động', slug: 'hanh-dong' },
   { name: 'Phiêu Lưu', slug: 'phieu-luu' },
   { name: 'Hài Hước', slug: 'hai-huoc' },
@@ -101,7 +103,7 @@ export const DEFAULT_GENRES = [
   { name: 'Kinh Điển', slug: 'kinh-dien' },
   { name: 'Phim Ngắn', slug: 'phim-ngan' },
   { name: 'Phim 18+', slug: 'phim-18' }
-];
+]);
 
 export function initGenreDropdown() {
   const toggle = document.getElementById('genre-toggle');
@@ -725,4 +727,3 @@ export function initWatchlistDrawer() {
 
 
 // ==========================================
-

@@ -111,17 +111,21 @@ async function loadSeasonSelector(anime, request) {
   const section = document.getElementById('detail-seasons');
   const list = document.getElementById('detail-season-list');
   const status = document.getElementById('detail-season-status');
-  section.hidden = anime.isMovie;
+  const movieSection = document.getElementById('detail-related-movies');
+  const movieList = document.getElementById('detail-movie-list');
+  section.hidden = false;
   list.replaceChildren();
-  if (anime.isMovie) return;
+  movieList.replaceChildren();
+  movieSection.hidden = true;
   status.textContent = 'Đang tìm các mùa của phim…';
   try {
-    const response = await fetch(`/api/anime/${encodeURIComponent(anime.id)}/seasons`);
+    const response = await fetch(`/api/anime/${encodeURIComponent(anime.id)}/related`);
     const result = await response.json();
     if (request !== detailRequest) return;
-    if (!response.ok || !result.success || !Array.isArray(result.data)) throw new Error();
-    status.textContent = result.data.length > 1 ? `${result.data.length} mùa · Chọn mùa để xem danh sách tập` : 'Hiện có 1 mùa';
-    for (const season of result.data) {
+    if (!response.ok || !result.success || !Array.isArray(result.data?.seasons)) throw new Error();
+    const { seasons, movies = [] } = result.data;
+    status.textContent = seasons.length ? `${seasons.length} mùa · Chọn mùa để xem danh sách tập` : 'Chưa có mùa phim liên quan';
+    for (const season of seasons) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'season-option';
@@ -134,6 +138,21 @@ async function loadSeasonSelector(anime, request) {
         router.navigate(`/anime/${season.id}`);
       });
       list.appendChild(button);
+    }
+    movieSection.hidden = movies.length === 0;
+    for (const movie of movies) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'season-option related-movie-option';
+      button.dataset.animeId = movie.id;
+      const name = movie.title.vietnamese || movie.title.english;
+      button.textContent = `${name}${movie.year ? ` · ${movie.year}` : ''}`;
+      button.title = (movie.sources || [{ source: movie.source }]).map(source => providerLabel(source.source)).join(', ');
+      button.setAttribute('aria-pressed', String(movie.id === anime.id || movie.sources?.some(source => source.id === anime.id)));
+      button.addEventListener('click', () => {
+        if (movie.id !== state.currentDetailAnime?.id) router.navigate(`/anime/${movie.id}`);
+      });
+      movieList.appendChild(button);
     }
   } catch {
     if (request !== detailRequest) return;

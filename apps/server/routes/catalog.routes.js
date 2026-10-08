@@ -16,6 +16,7 @@ catalogRouter.get('/genre-options', CatalogController.getGenreOptions);
 catalogRouter.get('/anime/by-genres', CatalogController.getByGenres);
 catalogRouter.get('/anime/:id', CatalogController.getAnimeDetail);
 catalogRouter.get('/anime/:id/seasons', CatalogController.getAnimeSeasons);
+catalogRouter.get('/anime/:id/related', CatalogController.getRelatedTitles);
 catalogRouter.get('/anime/:id/episodes', CatalogController.getAnimeEpisodes);
 catalogRouter.post('/watch/sources', CatalogController.getWatchSources);
 catalogRouter.get('/watch/anime47/media/:ticket', serveAnime47Media);
