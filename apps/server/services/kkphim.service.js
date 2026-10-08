@@ -41,9 +41,11 @@ const image = value => {
 
 export function mapMovie(m) {
   const movie = m.tmdb?.type === 'movie' || m.type === 'single';
+  const alternativeNames = Array.isArray(m.alternative_names) ? m.alternative_names : [];
   return normalizeProviderAnime({
     id: m.slug,
     title: { english: m.origin_name || m.name, vietnamese: m.name, romaji: m.origin_name || m.name },
+    aliases: [m.origin_name, m.name, ...alternativeNames].filter(Boolean),
     seriesId: !movie && m.tmdb?.type === 'tv' ? m.tmdb.id || null : null,
     seasonNumber: !movie ? Number(m.tmdb?.season) || null : null,
     updatedAt: m.modified?.time || null,

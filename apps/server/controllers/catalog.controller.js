@@ -196,13 +196,8 @@ export const CatalogController = {
   async getAnimeSeasons(req, res) {
     try {
       const id = req.params.id;
-      if (id.startsWith('anime47-')) {
-        const detail = await anime47Detail(id);
-        send(res, [detail]);
-      } else {
-        const detail = await movieDetail(id);
-        send(res, await allRelatedSeasons(detail));
-      }
+      const detail = id.startsWith('anime47-') ? await anime47Detail(id) : await movieDetail(id);
+      send(res, await allRelatedSeasons(detail));
     } catch (err) {
       const status = err.status && [400, 401, 403, 404, 409, 429].includes(err.status) ? err.status : 502;
       res.status(status).json({ success: false, message: err.message || 'Không tải được các mùa phim' });
@@ -246,12 +241,31 @@ export const CatalogController = {
         console.error('Error checking episode override:', err);
       }
 
+      const { provider } = req.body;
       const movie = anime_id.startsWith('anime47-') ? await anime47Detail(anime_id) : await movieDetail(anime_id);
       const ep = (movie.episodes || []).find(ep => ep.number === Number(episode_number));
-      if (ep?.sourceEpisodeId) {
-        const source = await anime47EpisodeSource(ep.sourceEpisodeId);
-        if (source.type === 'hls') source.stream_url = anime47MediaUrl(source.stream_url);
-        return res.json(source);
+
+      if (provider === 'AniDoki' && ep?.stream) {
+        return res.json({ success: true, type: 'hls', provider: 'AniDoki', language: 'vi', stream_url: ep.stream });
+      }
+      if (provider === 'NguonC' && ep?.embed) {
+        return res.json({ success: true, type: 'embed', provider: 'NguonC', language: 'vi', embed_url: ep.embed });
+      }
+
+      if (ep?.sourceEpisodeId && (!provider || provider === 'Anime47')) {
+        try {
+          const source = await anime47EpisodeSource(ep.sourceEpisodeId);
+          if (source.type === 'hls') source.stream_url = anime47MediaUrl(source.stream_url);
+          return res.json(source);
+        } catch (err) {
+          console.warn('Anime47 source unavailable, falling back to partner stream if available:', err.message);
+          if (ep.stream) {
+            return res.json({ success: true, type: 'hls', provider: 'AniDoki', language: 'vi', stream_url: ep.stream });
+          }
+          if (ep.embed) {
+            return res.json({ success: true, type: 'embed', provider: ep.embed.includes('streamc') ? 'NguonC' : 'AniDoki', language: 'vi', embed_url: ep.embed });
+          }
+        }
       }
       if (!ep || (!ep.stream && !ep.embed)) {
         return res.status(404).json({

@@ -326,13 +326,14 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
     return cached.data;
   }
 
+  let nativeEpisodes = [];
   // Resolve authenticated episode metadata; video URLs are fetched on demand.
   if (process.env.ANIME47_ACCESS_TOKEN?.trim() && anime.sourceId) {
     try {
       const data = await a47('/anime/' + encodeURIComponent(anime.sourceId) + '/episodes');
-      const episodes = extractAnime47Episodes(data);
-      if (episodes.length) {
-        const result = { provider: 'Anime47', type: null, episodes };
+      nativeEpisodes = extractAnime47Episodes(data);
+      if (nativeEpisodes.length && (requests.kk || requests.nc)) {
+        const result = { provider: 'Anime47', type: null, episodes: nativeEpisodes };
         episodesCache.set(cacheKey, { data: result, until: Date.now() + 30000 });
         return result;
       }
@@ -360,7 +361,50 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
     for (const a of anime.aliases) addQuery(a);
   }
 
-  const animeTitles = [anime.title?.vietnamese, anime.title?.english, anime.title?.romaji, anime.slug].filter(Boolean);
+  const allAnimeTitles = [
+    anime.title?.vietnamese,
+    anime.title?.english,
+    anime.title?.romaji,
+    anime.slug,
+    ...(Array.isArray(anime.aliases) ? anime.aliases : [])
+  ].filter(Boolean);
+
+  const matchesCandidate = (candidate) => {
+    const candidateTitles = [
+      candidate.name,
+      candidate.origin_name,
+      candidate.slug,
+      ...(Array.isArray(candidate.alternative_names) ? candidate.alternative_names : []),
+      ...(Array.isArray(candidate.aliases) ? candidate.aliases : [])
+    ].filter(Boolean);
+
+    for (const at of allAnimeTitles) {
+      for (const ct of candidateTitles) {
+        if (calculateSimilarity(at, ct) >= 0.35) return true;
+        const n1 = normalizeStr(at);
+        const n2 = normalizeStr(ct);
+        if (n1 && n2 && (n1 === n2 || (n1.length >= 6 && n2.includes(n1)) || (n2.length >= 6 && n1.includes(n2)))) return true;
+      }
+    }
+    return false;
+  };
+
+  const mergePartnerEpisodes = (partnerResult) => {
+    if (nativeEpisodes.length > 0) {
+      for (const ep of nativeEpisodes) {
+        const pEp = partnerResult.episodes.find(e => e.number === ep.number);
+        if (pEp) {
+          if (pEp.stream) ep.stream = pEp.stream;
+          if (pEp.embed) ep.embed = pEp.embed;
+        }
+      }
+      const result = { provider: 'Anime47', type: partnerResult.type || null, episodes: nativeEpisodes };
+      episodesCache.set(cacheKey, { data: result, until: Date.now() + 600000 });
+      return result;
+    }
+    episodesCache.set(cacheKey, { data: partnerResult, until: Date.now() + 600000 });
+    return partnerResult;
+  };
 
   // 1. Thử trực tiếp slug trên PhimAPI
   try {
@@ -368,9 +412,7 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
     if (directKk?.movie && isAnimePhimAPI(directKk.movie)) {
       const eps = extractEpisodes(directKk);
       if (eps.length > 0) {
-        const result = { provider: 'AniDoki', type: 'hls', episodes: eps };
-        episodesCache.set(cacheKey, { data: result, until: Date.now() + 600000 });
-        return result;
+        return mergePartnerEpisodes({ provider: 'AniDoki', type: 'hls', episodes: eps });
       }
     }
   } catch {}
@@ -381,9 +423,7 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
     if (directNc?.movie && isAnimeNguonC(directNc.movie)) {
       const eps = extractNguoncEpisodes(directNc.movie);
       if (eps.length > 0) {
-        const result = { provider: 'NguonC', type: 'embed', episodes: eps };
-        episodesCache.set(cacheKey, { data: result, until: Date.now() + 600000 });
-        return result;
+        return mergePartnerEpisodes({ provider: 'NguonC', type: 'embed', episodes: eps });
       }
     }
   } catch {}
@@ -397,16 +437,13 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
       const items = res.data?.items || [];
       for (const it of items) {
         if (!isAnimePhimAPI(it)) continue;
-        const sim = Math.max(...animeTitles.map(t => calculateSimilarity(t, it.name + ' ' + (it.origin_name || ''))));
-        if (sim < 0.40) continue;
+        if (!matchesCandidate(it)) continue;
 
         const candidateDetail = await kk('/phim/' + it.slug);
         if (candidateDetail?.movie && isAnimePhimAPI(candidateDetail.movie)) {
           const eps = extractEpisodes(candidateDetail);
           if (eps.length > 0) {
-            const result = { provider: 'AniDoki', type: 'hls', episodes: eps };
-            episodesCache.set(cacheKey, { data: result, until: Date.now() + 600000 });
-            return result;
+            return mergePartnerEpisodes({ provider: 'AniDoki', type: 'hls', episodes: eps });
           }
         }
       }
@@ -419,54 +456,24 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
       const res = await nc('/films/search?keyword=' + encodeURIComponent(q) + '&page=1');
       const items = res.items || [];
       for (const it of items) {
-        const sim = Math.max(...animeTitles.map(t => calculateSimilarity(t, it.name + ' ' + (it.original_name || ''))));
-        if (sim < 0.40) continue;
+        if (!matchesCandidate(it)) continue;
 
         const candidateDetail = await nc('/film/' + it.slug);
         if (candidateDetail?.movie && isAnimeNguonC(candidateDetail.movie)) {
           const eps = extractNguoncEpisodes(candidateDetail.movie);
           if (eps.length > 0) {
-            const result = { provider: 'NguonC', type: 'embed', episodes: eps };
-            episodesCache.set(cacheKey, { data: result, until: Date.now() + 600000 });
-            return result;
+            return mergePartnerEpisodes({ provider: 'NguonC', type: 'embed', episodes: eps });
           }
         }
       }
     } catch {}
   }
 
-  // 5. Thử tìm kiếm từ khóa bổ sung qua Anime47 Live Search
-  try {
-    const a47Search = await a47('/search/live?keyword=' + encodeURIComponent(anime.title?.vietnamese || anime.slug));
-    const results = a47Search?.results || [];
-    for (const r of results) {
-      const extraTitles = (r.titles || []).map(t => t.title).filter(Boolean);
-      for (const et of extraTitles) {
-        if (querySet.has(et)) continue;
-        querySet.add(et);
-        const kkRes = await kk('/v1/api/tim-kiem?keyword=' + encodeURIComponent(et) + '&limit=5');
-        const items = kkRes.data?.items || [];
-        for (const item of items) {
-          if (!isAnimePhimAPI(item)) continue;
-          const sim = Math.max(
-            calculateSimilarity(et, item.name + ' ' + (item.origin_name || '')),
-            ...animeTitles.map(t => calculateSimilarity(t, item.name + ' ' + (item.origin_name || '')))
-          );
-          if (sim < 0.40) continue;
-
-          const candidateDetail = await kk('/phim/' + item.slug);
-          if (candidateDetail?.movie && isAnimePhimAPI(candidateDetail.movie)) {
-            const eps = extractEpisodes(candidateDetail);
-            if (eps.length > 0) {
-              const result = { provider: 'AniDoki', type: 'hls', episodes: eps };
-              episodesCache.set(cacheKey, { data: result, until: Date.now() + 600000 });
-              return result;
-            }
-          }
-        }
-      }
-    }
-  } catch {}
+  if (nativeEpisodes.length > 0) {
+    const result = { provider: 'Anime47', type: null, episodes: nativeEpisodes };
+    episodesCache.set(cacheKey, { data: result, until: Date.now() + 30000 });
+    return result;
+  }
 
   // Catalog episode counts are metadata, not playable episodes.
   let unavailable = {

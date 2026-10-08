@@ -23,10 +23,20 @@ export function mergeSeasons(anime, candidates) {
 
 export async function allRelatedSeasons(anime) {
   if (anime.isMovie) return [anime];
-  const keyword = anime.seriesSearch || seriesTitle(anime.title.english || anime.title.vietnamese).replace(/\s*\([^)]*\)\s*$/u, '');
+  const searchKeywords = new Set();
+  const rawKey = anime.seriesSearch || seriesTitle(anime.title?.english || anime.title?.vietnamese || '').replace(/\s*\([^)]*\)\s*$/u, '');
+  if (rawKey && rawKey.length >= 3) searchKeywords.add(rawKey);
+  if (Array.isArray(anime.aliases)) {
+    for (const a of anime.aliases) {
+      const clean = seriesTitle(a).replace(/\s*\([^)]*\)\s*$/u, '').trim();
+      if (clean.length >= 3) searchKeywords.add(clean);
+    }
+  }
+
   const results = await Promise.allSettled([
     relatedSeasons(anime),
-    searchNguonc(keyword),
+    ...[...searchKeywords].map(kw => searchNguonc(kw)),
+    ...[...searchKeywords].map(kw => kkRequest('/v1/api/tim-kiem?keyword=' + encodeURIComponent(kw) + '&limit=10').then(res => (res.data?.items || []).map(mapMovie)).catch(() => [])),
     ...(anime.seriesSearch === 'Honzuki' && anime.source === 'NguonC'
       ? [kkRequest('/phim/co-nang-mot-sach').then(d => [mapMovie(d.movie)])] : [])
   ]);

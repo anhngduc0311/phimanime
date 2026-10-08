@@ -187,7 +187,15 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
         if (resumeTime > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - 1));
       };
       video.onerror = () => {
-        if (requestId === streamRequest) showPlayerNotice('Không tải được video trực tiếp. Hãy thử lại hoặc chọn nguồn khác.');
+        if (requestId === streamRequest) {
+          if (provider === 'Anime47') {
+            showToast('Đang tự động chuyển sang nguồn AniDoki Vietsub...');
+            activeProvider = 'AniDoki';
+            loadLiveAnimeStream(animeId, episodeNumber, 'AniDoki', language, resumeTime);
+            return;
+          }
+          showPlayerNotice('Không tải được video trực tiếp. Hãy thử lại hoặc chọn nguồn khác.');
+        }
       };
       const { default: Hls } = await import('hls.js');
       if (requestId !== streamRequest) return;
@@ -201,9 +209,13 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
             console.warn('Direct playback failed:', error.details);
             hlsPlayer?.destroy();
             hlsPlayer = null;
-            showPlayerNotice(data.provider === 'Anime47' && error.response?.code === 503
-              ? 'CDN Anime47 từ chối tải video qua máy chủ này. Bạn có thể mở tập trực tiếp trên Anime47 bằng phiên đăng nhập của mình.'
-              : 'Không tải được video trực tiếp. Hãy thử lại hoặc chọn nguồn khác.');
+            if (provider === 'Anime47') {
+              showToast('Nguồn Anime47 bị gián đoạn. Đang kết nối nguồn AniDoki Vietsub...');
+              activeProvider = 'AniDoki';
+              loadLiveAnimeStream(animeId, episodeNumber, 'AniDoki', language, resumeTime);
+              return;
+            }
+            showPlayerNotice('Không tải được video trực tiếp. Hãy thử lại hoặc chọn nguồn khác.');
           }
         });
         hlsPlayer.loadSource(streamUrl.href);
@@ -219,10 +231,17 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
     iframe.src = url.href;
     iframe.style.display = 'block';
     AniDokiAPI.saveProgress(animeId, episodeNumber, 0, 0);
-    // AniDoki owns playback controls; its public API does not document seeking.
     if (resumeTime > 0) showToast('Chọn vị trí xem tiếp trong trình phát.');
   } catch (err) {
-    if (requestId === streamRequest) showPlayerNotice(err.message);
+    if (requestId === streamRequest) {
+      if (provider === 'Anime47') {
+        showToast('Đang tự động chuyển sang nguồn AniDoki Vietsub...');
+        activeProvider = 'AniDoki';
+        loadLiveAnimeStream(animeId, episodeNumber, 'AniDoki', language, resumeTime);
+        return;
+      }
+      showPlayerNotice(err.message);
+    }
   }
 }
 

@@ -31,12 +31,24 @@ export function seasonNumber(anime) {
   return Number(explicit?.[1] || anime.seasonNumber) || 1;
 }
 
-const cleanTitle = title => seriesTitle(title.replace(/\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, 'Season $1')).normalize('NFKC').toLocaleLowerCase('vi').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
-export const seriesAliases = anime => [...Object.values(anime.title || {}), ...(anime.aliases || [])].filter(Boolean).map(cleanTitle);
+const cleanTitle = title => seriesTitle(title.replace(/\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, 'Season $1')).normalize('NFKC').toLocaleLowerCase('vi').replace(/["'()]/g, '').replace(/\s+/g, ' ').trim();
+export const seriesAliases = anime => {
+  const list = [...Object.values(anime.title || {}), ...(anime.aliases || [])].filter(Boolean);
+  const titles = new Set();
+  for (const item of list) {
+    const cleaned = cleanTitle(item);
+    if (cleaned) {
+      titles.add(cleaned);
+      const withoutSubtitle = cleaned.replace(/[~～\-–—:].*$/, '').trim();
+      if (withoutSubtitle.length > 3) titles.add(withoutSubtitle);
+    }
+  }
+  return [...titles];
+};
 export function sameSeries(a, b) {
   if (a.isMovie || b.isMovie) return a.id === b.id;
   if (a.seriesId && b.seriesId) return seriesKey(a) === seriesKey(b);
-  const titles = seriesAliases(a);
-  return seriesAliases(b).some(t => t.length > 3 && titles.includes(t));
+  const titlesA = seriesAliases(a);
+  const titlesB = seriesAliases(b);
+  return titlesB.some(tb => tb.length > 3 && titlesA.includes(tb));
 }
-
