@@ -8,6 +8,7 @@ import { groupSeries, seriesKey, seasonNumber } from '../../../../shared/series.
 import { openAnimeDetail } from './DetailView.js';
 import { openPlayerByRoute } from './PlayerView.js';
 import { POSTER_PLACEHOLDER } from '../utils/assets.js';
+import { providerLabel } from '../utils/providers.js';
 
 // SPOTLIGHT HERO CAROUSEL
 // ==========================================
@@ -113,7 +114,7 @@ function setSpotlightSlide(index) {
   status.textContent = anime.status === 'Currently Airing' ? 'ĐANG PHÁT SÓNG' : 'TRỌN BỘ';
   score.textContent = `★ ${anime.score}`;
   format.textContent = anime.format;
-  studio.textContent = anime.studio;
+  studio.textContent = providerLabel(anime.studio);
 
   title.textContent = anime.title.english || anime.title.vietnamese;
   if (anime.logo) {
@@ -289,7 +290,7 @@ export async function loadCatalogs() {
       for (const anime of groups) {
         const card = existing.get(seriesKey(anime));
         if (!card) recentGrid.appendChild(renderCard(anime));
-        else card.querySelector('.anime-card-sub').textContent = `${anime.studio} · ${anime.year}${anime.seasons.length > 1 ? ` · ${anime.seasons.length} mùa` : ''}`;
+        else card.querySelector('.anime-card-sub').textContent = `${providerLabel(anime.studio)} · ${anime.year}${anime.seasons.length > 1 ? ` · ${anime.seasons.length} mùa` : ''}`;
       }
       more.hidden = Boolean(data.pagination && recentPage >= data.pagination.totalPages);
     } catch { showToast('Không tải được thêm phim. Hãy thử lại.'); }

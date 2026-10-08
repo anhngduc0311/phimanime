@@ -6,6 +6,7 @@ import { openAnimeDetail } from './DetailView.js';
 import { loadContinueWatching } from './HomeView.js';
 import { validEmbed, validAnime47WatchUrl } from '../../../../shared/providers.js';
 import { setPlayerSEO } from '../utils/seo.js';
+import { providerLabel } from '../utils/providers.js';
 
 // CINEMA VIDEO PLAYER (ANIDOKI EMBED)
 // ==========================================
@@ -151,8 +152,8 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
   iframe.style.display = 'none';
   if (controls) controls.style.display = 'none';
   document.getElementById('player-notice-banner')?.remove();
-  showToast(`Đang tải nguồn ${provider} • Vietsub...`);
-  document.getElementById('player-source-label').textContent = `${provider} • Phụ đề Việt`;
+  showToast(`Đang tải nguồn ${providerLabel(provider)} • Vietsub...`);
+  document.getElementById('player-source-label').textContent = `${providerLabel(provider)} • Phụ đề Việt`;
   try {
     const res = await fetch('/api/watch/sources', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -170,8 +171,10 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
       video.controls = true;
       video.crossOrigin = 'anonymous';
       for (const [index, subtitle] of (data.subtitles || []).entries()) {
-        const url = new URL(subtitle.file);
-        if (url.protocol !== 'https:' || url.username || url.password) continue;
+        const url = new URL(subtitle.file, window.location.origin);
+        const localSubtitle = url.origin === window.location.origin &&
+          /^\/api\/watch\/anime47\/subtitles\/[a-f0-9]{48}$/.test(url.pathname);
+        if ((!localSubtitle && url.protocol !== 'https:') || url.username || url.password) continue;
         const track = document.createElement('track');
         track.kind = 'subtitles';
         track.srclang = 'vi';
@@ -179,10 +182,14 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
         track.src = url.href;
         track.default = index === 0;
         video.appendChild(track);
+        if (index === 0) track.track.mode = 'showing';
+        track.addEventListener('error', () => {
+          if (requestId === streamRequest) showToast('Không tải được phụ đề Việt. Hãy tải lại tập phim.');
+        });
       }
       video.style.display = 'block';
       if (data.provider) activeProvider = data.provider;
-      document.getElementById('player-source-label').textContent = `${data.provider || activeProvider} • Phụ đề Việt`;
+      document.getElementById('player-source-label').textContent = `${providerLabel(data.provider || activeProvider)} • Phụ đề Việt`;
       video.onloadedmetadata = () => {
         if (requestId !== streamRequest) return;
         if (resumeTime > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - 1));
@@ -211,7 +218,7 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
             hlsPlayer?.destroy();
             hlsPlayer = null;
             if (provider === 'Anime47') {
-              showToast('Nguồn Anime47 bị gián đoạn. Đang kết nối nguồn AniDoki Vietsub...');
+              showToast('Nguồn AnimeDoki bị gián đoạn. Đang kết nối nguồn AniDoki Vietsub...');
               activeProvider = 'AniDoki';
               loadLiveAnimeStream(animeId, episodeNumber, 'AniDoki', language, resumeTime);
               return;
@@ -227,8 +234,8 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
     if (data.type !== 'embed') throw new Error('Nguồn phát không hợp lệ.');
     const url = new URL(data.embed_url);
     if (!validEmbed(url.href, data.provider)) throw new Error('Địa chỉ trình phát không hợp lệ.');
-    document.getElementById('player-source-label').textContent = `${data.provider} • Phụ đề Việt`;
-    iframe.title = `Trình phát ${data.provider}`;
+    document.getElementById('player-source-label').textContent = `${providerLabel(data.provider)} • Phụ đề Việt`;
+    iframe.title = `Trình phát ${providerLabel(data.provider)}`;
     iframe.src = url.href;
     iframe.style.display = 'block';
     AniDokiAPI.saveProgress(animeId, episodeNumber, 0, 0);
@@ -241,7 +248,7 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
         loadLiveAnimeStream(animeId, episodeNumber, 'AniDoki', language, resumeTime);
         return;
       }
-      showPlayerNotice(err.message);
+      showPlayerNotice(providerLabel(err.message));
     }
   }
 }
@@ -256,7 +263,7 @@ async function renderSourceChoices(anime, episodeNumber) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `prov-btn${source.id === anime.id ? ' active' : ''}`;
-      button.textContent = source.source;
+      button.textContent = providerLabel(source.source);
       button.setAttribute('aria-pressed', String(source.id === anime.id));
       button.addEventListener('click', () => {
         if (source.id !== anime.id) router.navigate(`/watch/${source.id}/${episodeNumber}`);
@@ -315,7 +322,7 @@ function showPlayerNotice(message) {
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.className = 'notice-retry-btn';
-    link.textContent = 'Mở tập trên Anime47';
+    link.textContent = 'Mở tập trên AnimeDoki';
     notice.querySelector('.notice-actions').appendChild(link);
   }
   notice.style.display = 'flex';

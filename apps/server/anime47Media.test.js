@@ -78,3 +78,29 @@ test('all mirrors denying access produces an explicit error without repeated den
   await assert.rejects(fetchAnime47Media('https://cdn1.nonprofit.asia/video.png', {}, request, blocked), { code: 'CDN_ACCESS_DENIED' });
   assert.equal(calls, 7);
 });
+
+test('configured relay receives only its secret and preserves the upstream URL for media decoding', async () => {
+  const previousUrl = process.env.ANIME47_MEDIA_RELAY_URL;
+  const previousToken = process.env.ANIME47_MEDIA_RELAY_TOKEN;
+  try {
+    process.env.ANIME47_MEDIA_RELAY_URL = 'https://relay.anidoki.com/media';
+    process.env.ANIME47_MEDIA_RELAY_TOKEN = 'test-relay-key-'.repeat(3);
+    const target = 'https://cdn1.nonprofit.asia/video.png';
+    const result = await fetchAnime47Media(target, { headers: { Range: 'bytes=0-100' } }, async (url, options) => {
+      assert.equal(url, 'https://relay.anidoki.com/media');
+      assert.equal(options.method, 'POST');
+      assert.equal(options.redirect, 'error');
+      assert.equal(options.headers.Authorization, 'Bearer ' + process.env.ANIME47_MEDIA_RELAY_TOKEN);
+      assert.equal(options.headers.Range, 'bytes=0-100');
+      assert.deepEqual(JSON.parse(options.body), { url: target });
+      return { status: 200 };
+    });
+    assert.equal(result.target, target);
+    process.env.ANIME47_MEDIA_RELAY_URL = 'https://untrusted.example/media';
+    await assert.rejects(fetchAnime47Media(target, {}, () => assert.fail('invalid relay must not receive the secret')), { code: 'RELAY_CONFIG_INVALID' });
+  } finally {
+    for (const [key, value] of [['ANIME47_MEDIA_RELAY_URL', previousUrl], ['ANIME47_MEDIA_RELAY_TOKEN', previousToken]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});

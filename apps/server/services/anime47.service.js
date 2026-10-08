@@ -219,11 +219,27 @@ export function mapAnime47(item) {
   return anime;
 }
 
-/**
- * Lấy danh sách Anime mới cập nhật từ Anime47 có hỗ trợ phân trang
- * @param {number} page
- * @param {number} limit
- */
+// Search also hydrates detail lookup for titles outside the latest pages.
+export async function searchAnime47(keyword, request = anime47Request) {
+  const query = String(keyword || '').trim().slice(0, 150);
+  if (!query) return [];
+  const load = page => request('/search/live?keyword=' + encodeURIComponent(query) + '&page=' + page);
+  const first = await load(1);
+  const totalPages = Math.min(100, Math.max(1, Number(first.total_pages) || 1));
+  const pages = [first];
+  for (let page = 2; page <= totalPages; page += 4) {
+    pages.push(...await Promise.all(Array.from({ length: Math.min(4, totalPages - page + 1) }, (_, i) => load(page + i))));
+  }
+  const unique = new Map();
+  for (const result of pages) {
+    for (const item of result.results || []) {
+      const anime = mapAnime47(item);
+      if (anime) unique.set(anime.id, anime);
+    }
+  }
+  return [...unique.values()];
+}
+
 export async function getAnime47LatestEpisodes(page = 1, limit = 24) {
   const pageNum = Math.max(1, parseInt(page) || 1);
   const path = `/anime/filter?sort=latest&page=${pageNum}`;
@@ -342,7 +358,7 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
     try {
       const data = await a47('/anime/' + encodeURIComponent(anime.sourceId) + '/episodes');
       nativeEpisodes = extractAnime47Episodes(data);
-      if (nativeEpisodes.length && (requests.kk || requests.nc)) {
+      if (nativeEpisodes.length) {
         const result = { provider: 'Anime47', type: null, episodes: nativeEpisodes };
         episodesCache.set(cacheKey, { data: result, until: Date.now() + 30000 });
         return result;

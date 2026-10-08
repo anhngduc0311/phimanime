@@ -63,15 +63,18 @@ export function createAnime47Session({ config = () => process.env, request = (..
     if (!session.refreshToken) return session.accessToken;
     if (pending?.session === session) return pending.task;
     if (session.retryAfter > now()) throw Object.assign(new Error('Phiên Anime47 cần được đăng nhập lại hoặc thử lại sau.'), {
-      status: 401, code: 'SOURCE_LOGIN_REQUIRED'
+      status: session.lastFailure?.status || 502, code: 'SOURCE_LOGIN_REQUIRED',
+      upstreamStatus: session.lastFailure?.upstreamStatus
     });
     const task = (async () => {
+      let upstreamStatus;
       try {
         const response = await request('https://anime47.love/api/auth/refresh-token', {
           method: 'POST', headers: { ...anime47ApiHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: session.refreshToken }),
           redirect: 'error', signal: AbortSignal.timeout(12000)
         });
+        upstreamStatus = response.status;
         if (!response.ok) throw Object.assign(new Error('Không làm mới được phiên Anime47. Hãy cập nhật refresh token trên máy chủ.'), {
           status: response.status, code: 'ANIME47_REFRESH_FAILED'
         });
@@ -91,6 +94,11 @@ export function createAnime47Session({ config = () => process.env, request = (..
         return accessToken;
       } catch (error) {
         session.retryAfter = now() + 30000;
+        session.lastFailure = { status: error.status, upstreamStatus };
+        console.warn('Anime47 refresh failed', JSON.stringify({
+          status: upstreamStatus, code: error.code?.startsWith('ANIME47_REFRESH') ? error.code : 'ANIME47_REFRESH_FAILED',
+          networkCode: error.cause?.code
+        }));
         // Do not expose upstream error bodies, which may contain credentials.
         if (error.code?.startsWith('ANIME47_REFRESH')) throw error;
         throw Object.assign(new Error('Không kết nối được dịch vụ làm mới phiên Anime47.'), { code: 'ANIME47_REFRESH_FAILED' });

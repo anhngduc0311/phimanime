@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHmac } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
@@ -7,6 +7,17 @@ const byUrl = new Map();
 const TTL = 4 * 60 * 60 * 1000;
 const LIMIT = 20000;
 const blockedCdnHosts = new Map();
+
+function mediaRelayConfig() {
+  if (!process.env.ANIME47_MEDIA_RELAY_URL) return null;
+  const endpoint = new URL(process.env.ANIME47_MEDIA_RELAY_URL);
+  const token = process.env.ANIME47_MEDIA_RELAY_TOKEN?.trim();
+  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.port ||
+      endpoint.hostname !== 'relay.anidoki.com' || endpoint.pathname !== '/media' || endpoint.search || endpoint.hash || !token || token.length < 32) {
+    throw Object.assign(new Error('Invalid Anime47 media relay configuration'), { code: 'RELAY_CONFIG_INVALID' });
+  }
+  return { endpoint, token };
+}
 
 export function anime47MediaHeaders(range) {
   const headers = {
@@ -23,6 +34,16 @@ export function anime47MediaHeaders(range) {
 export async function fetchAnime47Media(target, options, request = fetch, blocked = blockedCdnHosts) {
   const url = new URL(target);
   const isMirror = /^cdn[1-7]\.nonprofit\.asia$/.test(url.hostname);
+  if (isMirror && process.env.ANIME47_MEDIA_RELAY_URL) {
+    const { endpoint, token } = mediaRelayConfig();
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    if (options.headers?.Range) headers.Range = options.headers.Range;
+    const response = await request(endpoint.href, {
+      method: 'POST', headers, body: JSON.stringify({ url: url.href }),
+      redirect: 'error', signal: options.signal
+    });
+    return { response, target: url.href };
+  }
   const hosts = isMirror ? [url.hostname, ...[1, 2, 3, 4, 5, 6, 7].map(i => `cdn${i}.nonprofit.asia`).filter(host => host !== url.hostname)] : [url.hostname];
   for (const host of hosts) {
     if (isMirror && blocked.get(host) > Date.now()) continue;
@@ -51,6 +72,15 @@ export function allowedAnime47Media(value) {
 // from the browser, and Anime47 account credentials never go to media hosts.
 export function anime47MediaUrl(value) {
   if (!allowedAnime47Media(value)) throw new Error('Nguồn video Anime47 chưa được hỗ trợ');
+  if (process.env.ANIME47_MEDIA_RELAY_MODE === 'browser' && /^cdn[1-7]\.nonprofit\.asia$/.test(new URL(value).hostname)) {
+    const relay = mediaRelayConfig();
+    if (relay) {
+      const payload = Buffer.from(JSON.stringify({ url: value, expires: Date.now() + TTL })).toString('base64url');
+      const signature = createHmac('sha256', relay.token).update(payload).digest('hex');
+      relay.endpoint.search = new URLSearchParams({ payload, signature }).toString();
+      return relay.endpoint.href;
+    }
+  }
   const existing = byUrl.get(value);
   if (existing && tickets.get(existing)?.until > Date.now()) return '/api/watch/anime47/media/' + existing;
   while (tickets.size >= LIMIT) {

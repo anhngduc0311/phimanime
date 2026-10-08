@@ -7,6 +7,7 @@ import { refreshWatchlistCount } from '../components/Header.js';
 import { openPlayerByRoute } from './PlayerView.js';
 import { seasonNumber } from '../../../../shared/series.js';
 import { setAnimeDetailSEO } from '../utils/seo.js';
+import { providerLabel } from '../utils/providers.js';
 
 // ANIME DETAIL VIEW (1:1 VỚI BẢN ONE PIECE TRONG ẢNH)
 // ==========================================
@@ -36,7 +37,7 @@ export async function openAnimeDetail(animeId, pushRoute = true) {
 
   // Eyebrow
   document.getElementById('detail-score-val').textContent = anime.score;
-  document.getElementById('detail-studio-badge').textContent = anime.studio;
+  document.getElementById('detail-studio-badge').textContent = providerLabel(anime.studio);
 
   const genreContainer = document.getElementById('detail-genres-list');
   genreContainer.innerHTML = '';
@@ -78,7 +79,7 @@ export async function openAnimeDetail(animeId, pushRoute = true) {
   document.getElementById('meta-status').textContent = anime.status;
   document.getElementById('meta-format').textContent = anime.format;
   document.getElementById('meta-duration').textContent = anime.duration;
-  document.getElementById('meta-studio').textContent = anime.studio;
+  document.getElementById('meta-studio').textContent = providerLabel(anime.studio);
   document.getElementById('meta-season').textContent = anime.season || `${anime.year}`;
 
   // Bookmark status
@@ -126,7 +127,7 @@ async function loadSeasonSelector(anime, request) {
       button.className = 'season-option';
       button.dataset.animeId = season.id;
       button.textContent = `Mùa ${seasonNumber(season)}${season.year ? ` · ${season.year}` : ''}`;
-      button.title = `${season.title.vietnamese || season.title.english} · ${(season.sources || [{ source: season.source }]).map(s => s.source).join(', ')}`;
+      button.title = `${season.title.vietnamese || season.title.english} · ${(season.sources || [{ source: season.source }]).map(s => providerLabel(s.source)).join(', ')}`;
       button.setAttribute('aria-pressed', String(season.id === anime.id));
       button.addEventListener('click', () => {
         if (season.id === state.currentDetailAnime?.id) return;

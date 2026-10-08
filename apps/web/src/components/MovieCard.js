@@ -1,6 +1,7 @@
 import { seriesKey } from '../../../../shared/series.js';
 import { router } from '../router.js';
 import { POSTER_PLACEHOLDER } from '../utils/assets.js';
+import { providerLabel } from '../utils/providers.js';
 
 export function renderCard(anime) {
   const card = document.createElement('div');
@@ -17,7 +18,7 @@ export function renderCard(anime) {
   const scoreText = anime.score ? `★ ${anime.score}` : '';
   const epText = anime.format === 'MOVIE' ? 'Movie' : `Tập ${anime.currentEpisode || anime.totalEpisodes || 'Full'}`;
   const seasonCount = anime.seasonCount ?? anime.seasons?.length ?? 0;
-  const subMeta = [anime.studio, anime.year].filter(Boolean).join(' · ');
+  const subMeta = [providerLabel(anime.studio), anime.year].filter(Boolean).join(' · ');
 
   card.setAttribute('aria-label', `Xem chi tiết ${mainTitle}`);
   card.addEventListener('keydown', event => {

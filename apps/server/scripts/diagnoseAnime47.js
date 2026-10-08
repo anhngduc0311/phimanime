@@ -1,8 +1,9 @@
 import { anime47Request, extractAnime47Episodes, anime47EpisodeSource } from '../services/anime47.service.js';
 import { anime47MediaHeaders } from '../services/anime47Media.service.js';
+import { anime47Session } from '../services/anime47Session.service.js';
 
 // Safe production diagnostic: logs hosts/statuses, never tokens or signed URLs.
-let stage = 'episodes';
+let stage = 'session';
 let host = 'anime47.love';
 try {
   const id = process.argv[2] || '11322';
@@ -12,6 +13,8 @@ try {
     tokenConfigured: Boolean(process.env.ANIME47_ACCESS_TOKEN?.trim()),
     refreshTokenConfigured: Boolean(process.env.ANIME47_REFRESH_TOKEN?.trim())
   }));
+  await anime47Session.ensure();
+  stage = 'episodes';
   const episode = extractAnime47Episodes(await anime47Request('/anime/' + id + '/episodes'))[0];
   if (!episode) throw new Error('No episodes');
   const source = await anime47EpisodeSource(episode.id);
@@ -48,6 +51,7 @@ try {
     url = new URL(next, url).href;
   }
 } catch (error) {
-  console.error(JSON.stringify({ stage, host, name: error.name, code: error.code || error.cause?.code, causeCodes: error.cause?.errors?.map(item => item.code) }));
+  console.error(JSON.stringify({ stage, host, name: error.name, status: error.status, upstreamStatus: error.upstreamStatus,
+    code: error.code || error.cause?.code, causeCodes: error.cause?.errors?.map(item => item.code) }));
   process.exitCode = 1;
 }

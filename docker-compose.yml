@@ -26,6 +26,9 @@ services:
       ANIME47_ACCESS_TOKEN: ${ANIME47_ACCESS_TOKEN:-}
       ANIME47_REFRESH_TOKEN: ${ANIME47_REFRESH_TOKEN:-}
       ANIME47_SESSION_FILE: /app/session/anime47.json
+      ANIME47_MEDIA_RELAY_URL: ${ANIME47_MEDIA_RELAY_URL:-}
+      ANIME47_MEDIA_RELAY_TOKEN: ${ANIME47_MEDIA_RELAY_TOKEN:-}
+      ANIME47_MEDIA_RELAY_MODE: ${ANIME47_MEDIA_RELAY_MODE:-server}
       DATABASE_URL: postgresql://anidoki_user:anidoki_secure_pass_2026@postgres:5432/anidoki_db
       PGHOST: postgres
       PGPORT: 5432

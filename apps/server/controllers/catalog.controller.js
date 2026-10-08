@@ -14,6 +14,7 @@ import {
 } from '../services/kkphim.service.js';
 import { getAnime47LatestEpisodes, anime47Detail, anime47EpisodeSource } from '../services/anime47.service.js';
 import { anime47MediaUrl } from '../services/anime47Media.service.js';
+import { allowedAnime47Subtitle, anime47SubtitleUrl } from '../services/anime47Subtitle.service.js';
 import { ConfigModel } from '../models/config.model.js';
 import { pool } from '../db/db.js';
 import { allRelatedSeasons } from '../services/catalogSources.service.js';
@@ -264,6 +265,8 @@ export const CatalogController = {
         try {
           const source = await anime47EpisodeSource(ep.sourceEpisodeId);
           if (source.type === 'hls') source.stream_url = anime47MediaUrl(source.stream_url);
+          source.subtitles = (source.subtitles || []).filter(track => allowedAnime47Subtitle(track.file))
+            .map(track => ({ ...track, file: anime47SubtitleUrl(track.file) }));
           return res.json(source);
         } catch (err) {
           console.warn('Anime47 source unavailable, falling back to partner stream if available:', err.message);

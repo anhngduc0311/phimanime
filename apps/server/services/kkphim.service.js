@@ -298,18 +298,32 @@ export async function browseCatalog(params = {}) {
   const path = keyword ? '/v1/api/tim-kiem' : '/v1/api/danh-sach/hoat-hinh';
   if (keyword) query.keyword = keyword;
   const discoverNguonc = () => remember('nguonc-search:' + cacheKey(keyword), () => searchNguonc(keyword));
+  // Start the supplemental provider in parallel; its failure must not block
+  // existing providers, nor should their failures hide Anime47-only results.
+  const anime47Results = keyword ? remember('anime47-search:' + cacheKey(keyword), async () => {
+    const { searchAnime47 } = await import('./anime47.service.js');
+    return searchAnime47(keyword);
+  }).catch(() => []) : Promise.resolve([]);
   let items = keyword ? await searchMeili(keyword) : null;
   if (!items?.length) {
     const results = await Promise.allSettled([
       loadBrowseEntries(path, query),
       keyword ? discoverNguonc() : Promise.resolve([])
     ]);
-    if (results[0].status === 'rejected' && (!keyword || results[1].status === 'rejected')) throw new Error('Không tải được danh sách phim');
+    if (results[0].status === 'rejected' && (!keyword || results[1].status === 'rejected') && !(await anime47Results).length) throw new Error('Không tải được danh sách phim');
     items = [...(results[0].value || []), ...(results[1].value || [])];
     if (keyword && results[1].value?.length) void indexNguoncSearch(results[1].value).catch(() => { });
   } else {
     // Discover supplemental sources in the background, without delaying hits.
     void discoverNguonc().then(indexNguoncSearch).catch(() => { });
+  }
+  if (keyword) {
+    // Lazy import avoids the Anime47 episode resolver's dependency on this module.
+    // Live results must supplement Meilisearch hits too: the primary index does
+    // not contain Anime47-only titles. Apply overrides/filters after merging.
+    const merged = new Map(items.map(item => [item.id, item]));
+    for (const item of await anime47Results) merged.set(item.id, item);
+    items = [...merged.values()];
   }
   items = items.filter(m => !hiddenSet.has(m.id)).map(m => {
     const override = overridesMap.get(m.id);
