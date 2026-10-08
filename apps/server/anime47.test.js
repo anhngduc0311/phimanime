@@ -86,7 +86,7 @@ test('anime47Detail retrieves details and resolves episode structure', async () 
   assert.ok(Array.isArray(detail.episodes));
   if (detail.episodes.length) {
     assert.equal(detail.episodes[0].number, 1);
-    assert.ok(detail.episodes.every(ep => ep.stream || ep.embed));
+    assert.ok(detail.episodes.every(ep => ep.stream || ep.embed || ep.sourceEpisodeId));
   } else {
     assert.ok(detail.playbackUnavailable?.message);
     assert.equal(detail.streamType, null);
@@ -142,5 +142,5 @@ test('anime47Detail resolves valid video streams for matched anime', async () =>
   const detail = await anime47Detail('anime47-toki-wo-kakeru-shoujo');
   assert.ok(detail.episodes.length > 0);
   const ep1 = detail.episodes[0];
-  assert.ok(ep1.stream || ep1.embed, 'Episode 1 should have a valid stream or embed');
+  assert.ok(ep1.stream || ep1.embed || ep1.sourceEpisodeId, 'Episode 1 should have a valid stream, embed or upstream episode ID');
 });

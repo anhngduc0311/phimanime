@@ -12,7 +12,8 @@ import {
   kkRequest,
   mapMovie
 } from '../services/kkphim.service.js';
-import { getAnime47LatestEpisodes, anime47Detail } from '../services/anime47.service.js';
+import { getAnime47LatestEpisodes, anime47Detail, anime47EpisodeSource } from '../services/anime47.service.js';
+import { anime47MediaUrl } from '../services/anime47Media.service.js';
 import { ConfigModel } from '../models/config.model.js';
 import { pool } from '../db/db.js';
 import { allRelatedSeasons } from '../services/catalogSources.service.js';
@@ -247,6 +248,11 @@ export const CatalogController = {
 
       const movie = anime_id.startsWith('anime47-') ? await anime47Detail(anime_id) : await movieDetail(anime_id);
       const ep = (movie.episodes || []).find(ep => ep.number === Number(episode_number));
+      if (ep?.sourceEpisodeId) {
+        const source = await anime47EpisodeSource(ep.sourceEpisodeId);
+        if (source.type === 'hls') source.stream_url = anime47MediaUrl(source.stream_url);
+        return res.json(source);
+      }
       if (!ep || (!ep.stream && !ep.embed)) {
         return res.status(404).json({
           success: false,

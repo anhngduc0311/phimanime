@@ -1,5 +1,6 @@
 import express from 'express';
 import { CatalogController } from '../controllers/catalog.controller.js';
+import { serveAnime47Media } from '../services/anime47Media.service.js';
 
 export const catalogRouter = express.Router();
 
@@ -16,5 +17,6 @@ catalogRouter.get('/anime/:id', CatalogController.getAnimeDetail);
 catalogRouter.get('/anime/:id/seasons', CatalogController.getAnimeSeasons);
 catalogRouter.get('/anime/:id/episodes', CatalogController.getAnimeEpisodes);
 catalogRouter.post('/watch/sources', CatalogController.getWatchSources);
+catalogRouter.get('/watch/anime47/media/:ticket', serveAnime47Media);
 catalogRouter.get('/search', CatalogController.search);
 catalogRouter.get('/browse', CatalogController.browse);

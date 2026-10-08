@@ -23,6 +23,7 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
+      ANIME47_ACCESS_TOKEN: ${ANIME47_ACCESS_TOKEN:-}
       DATABASE_URL: postgresql://anidoki_user:anidoki_secure_pass_2026@postgres:5432/anidoki_db
       PGHOST: postgres
       PGPORT: 5432

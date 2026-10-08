@@ -2,11 +2,25 @@ import { normalizeProviderAnime } from '../../../shared/providers.js';
 import { seriesKey, seriesTitle, seasonNumber } from '../../../shared/series.js';
 import { kkRequest, mapMovie, extractEpisodes } from './kkphim.service.js';
 import { nguoncRequest, extractNguoncEpisodes } from './nguonc.service.js';
+import { createHash } from 'node:crypto';
+import { validEmbed } from '../../../shared/providers.js';
 
 const cache = new Map();
 const pending = new Map();
 const memoryAnime47Store = new Map();
 const episodesCache = new Map();
+let sessionFingerprint = '';
+
+function sessionHeaders() {
+  const token = (process.env.ANIME47_ACCESS_TOKEN || '').trim().replace(/^Bearer\s+/i, '');
+  const fingerprint = createHash('sha256').update(token).digest('hex');
+  if (fingerprint !== sessionFingerprint) {
+    cache.clear();
+    episodesCache.clear();
+    sessionFingerprint = fingerprint;
+  }
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 /**
  * Chuẩn hóa chuỗi tìm kiếm bỏ dấu và ký tự đặc biệt
@@ -61,9 +75,12 @@ function calculateSimilarity(str1, str2) {
  * Gửi HTTP request tới Anime47 API có cache và timeout
  */
 export async function anime47Request(path) {
+  const auth = sessionHeaders();
+  if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Đường dẫn Anime47 không hợp lệ');
+  const requestKey = sessionFingerprint + ':' + path;
   const hit = cache.get(path);
   if (hit?.until > Date.now()) return hit.data;
-  if (pending.has(path)) return pending.get(path);
+  if (pending.has(requestKey)) return pending.get(requestKey);
 
   const task = (async () => {
     const url = 'https://anime47.love/api' + path;
@@ -72,8 +89,10 @@ export async function anime47Request(path) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': 'https://anime47.best/',
         'Origin': 'https://anime47.best',
-        'Accept': 'application/json, text/plain, */*'
+        'Accept': 'application/json, text/plain, */*',
+        ...auth
       },
+      redirect: 'error',
       signal: AbortSignal.timeout(12000)
     });
 
@@ -87,15 +106,17 @@ export async function anime47Request(path) {
 
     const data = await response.json();
     if (cache.size >= 200) cache.delete(cache.keys().next().value);
-    cache.set(path, { data, until: Date.now() + 300000 }); // 5 minutes cache
+    if (requestKey.startsWith(sessionFingerprint + ':')) {
+      cache.set(path, { data, until: Date.now() + 300000 });
+    }
     return data;
   })();
 
-  pending.set(path, task);
+  pending.set(requestKey, task);
   try {
     return await task;
   } finally {
-    pending.delete(path);
+    pending.delete(requestKey);
   }
 }
 
@@ -295,6 +316,7 @@ function isAnimeNguonC(movie) {
  * Tìm kiếm tập phim phù hợp từ các provider đối tác
  */
 export async function resolveEpisodesForAnime47(anime, requests = {}) {
+  sessionHeaders();
   const kk = requests.kk || kkRequest;
   const nc = requests.nc || nguoncRequest;
   const a47 = requests.a47 || anime47Request;
@@ -302,6 +324,21 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
   const cached = episodesCache.get(cacheKey);
   if (cached && cached.until > Date.now()) {
     return cached.data;
+  }
+
+  // Resolve authenticated episode metadata; video URLs are fetched on demand.
+  if (process.env.ANIME47_ACCESS_TOKEN?.trim() && anime.sourceId) {
+    try {
+      const data = await a47('/anime/' + encodeURIComponent(anime.sourceId) + '/episodes');
+      const episodes = extractAnime47Episodes(data);
+      if (episodes.length) {
+        const result = { provider: 'Anime47', type: null, episodes };
+        episodesCache.set(cacheKey, { data: result, until: Date.now() + 30000 });
+        return result;
+      }
+    } catch (error) {
+      if (error.status !== 401 && error.status !== 403) console.warn('Anime47 episode list unavailable');
+    }
   }
 
   const querySet = new Set();
@@ -443,7 +480,9 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
       if (error.code === 'PRIVATE_MODE' || error.status === 401 || error.status === 403) {
         unavailable = {
           code: 'SOURCE_LOGIN_REQUIRED',
-          message: 'Anime47 yêu cầu đăng nhập để truy cập tập phim. Hiện chưa có nguồn Vietsub dự phòng cho phim này.'
+          message: process.env.ANIME47_ACCESS_TOKEN?.trim()
+            ? 'Phiên Anime47 đã hết hạn hoặc không có quyền truy cập. Hãy cập nhật token đăng nhập trên máy chủ.'
+            : 'Anime47 yêu cầu đăng nhập để truy cập tập phim. Hiện chưa có nguồn Vietsub dự phòng cho phim này.'
         };
       }
     }
@@ -451,4 +490,41 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
   const result = { provider: 'Anime47', type: null, episodes: [], unavailable };
   episodesCache.set(cacheKey, { data: result, until: Date.now() + 30000 });
   return result;
+}
+
+export function extractAnime47Episodes(payload) {
+  const data = payload?.data || payload;
+  const groups = Array.isArray(data?.teams)
+    ? data.teams.flatMap(team => team.groups || []) : (data?.groups || []);
+  const episodes = new Map();
+  for (const group of groups) {
+    for (const episode of group.episodes || []) {
+      const number = Number(episode.number || episode.sort_number);
+      if (!Number.isInteger(number) || number < 1 || !/^\d+$/.test(String(episode.id || '')) || episodes.has(number)) continue;
+      episodes.set(number, { number, id: String(episode.id), sourceEpisodeId: String(episode.id), title: episode.title || `Tập ${number}` });
+    }
+  }
+  return [...episodes.values()].sort((a, b) => a.number - b.number);
+}
+
+export async function anime47EpisodeSource(id, request = anime47Request) {
+  if (!/^\d+$/.test(String(id))) throw new Error('Mã tập Anime47 không hợp lệ');
+  const payload = await request('/anime/watch/episode/' + id);
+  const episode = payload?.data || payload;
+  const streams = [...(episode?.streams || [])].sort((a, b) => Number(b.is_default || 0) - Number(a.is_default || 0));
+  for (const source of streams) {
+    let url;
+    try { url = new URL(source.url); } catch { continue; }
+    if (url.protocol !== 'https:' || url.username || url.password) continue;
+    if (['jwplayer', 'hls'].includes(source.player_type)) {
+      // Softsub streams need a Vietnamese subtitle track for the Vietsub player.
+      const subtitles = (source.subtitles || []).filter(track => /vi|viet|vietnam/i.test(track.language || track.label || ''))
+        .filter(track => { try { const u = new URL(track.file); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; } })
+        .map(track => ({ label: track.label || 'Tiếng Việt', file: track.file }));
+      if (source.subtitles?.length && !subtitles.length) continue;
+      return { success: true, provider: 'Anime47', type: 'hls', language: 'vi', stream_url: url.href, subtitles };
+    }
+    if (validEmbed(url.href, 'Anime47')) return { success: true, provider: 'Anime47', type: 'embed', language: 'vi', embed_url: url.href };
+  }
+  throw Object.assign(new Error('Tập Anime47 chưa có nguồn Vietsub tương thích hoặc tài khoản chưa có quyền xem.'), { status: 404 });
 }

@@ -143,6 +143,7 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
   lastProgressSave = 0;
   video.pause();
   video.removeAttribute('src');
+  video.querySelectorAll('track').forEach(track => track.remove());
   video.style.display = 'none';
   iframe.removeAttribute('src');
   iframe.style.display = 'none';
@@ -159,10 +160,25 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
     if (requestId !== streamRequest) return;
     if (!res.ok || !data.success) throw new Error(data.message || 'Tập hoặc ngôn ngữ này chưa có nguồn phát.');
     if (data.type === 'hls') {
-      const streamUrl = new URL(data.stream_url);
-      if (streamUrl.protocol !== 'https:' || streamUrl.username || streamUrl.password) throw new Error('Địa chỉ video không hợp lệ.');
+      const streamUrl = new URL(data.stream_url, window.location.origin);
+      const localAnime47 = data.provider === 'Anime47' && streamUrl.origin === window.location.origin &&
+        /^\/api\/watch\/anime47\/media\/[a-f0-9]{48}$/.test(streamUrl.pathname);
+      if ((!localAnime47 && streamUrl.protocol !== 'https:') || streamUrl.username || streamUrl.password) throw new Error('Địa chỉ video không hợp lệ.');
       video.controls = true;
+      video.crossOrigin = 'anonymous';
+      for (const [index, subtitle] of (data.subtitles || []).entries()) {
+        const url = new URL(subtitle.file);
+        if (url.protocol !== 'https:' || url.username || url.password) continue;
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.srclang = 'vi';
+        track.label = subtitle.label || 'Tiếng Việt';
+        track.src = url.href;
+        track.default = index === 0;
+        video.appendChild(track);
+      }
       video.style.display = 'block';
+      document.getElementById('player-source-label').textContent = `${data.provider} • Phụ đề Việt`;
       video.onloadedmetadata = () => {
         if (requestId !== streamRequest) return;
         if (resumeTime > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - 1));
