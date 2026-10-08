@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        WEB_ASSET_BASE: ${WEB_ASSET_BASE:-/}
+    container_name: anidoki_web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: anidoki_server
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: postgresql://anidoki_user:anidoki_secure_pass_2026@postgres:5432/anidoki_db
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: anidoki_user
+      PGPASSWORD: anidoki_secure_pass_2026
+      PGDATABASE: anidoki_db
+      REDIS_URL: redis://redis:6379
+      MEILI_URL: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-3575be479580800013d608a236b6d632937222fd03f582063161e4244e5adeb5}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@anidoki.com}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: anidoki_meilisearch
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7700:7700"
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-3575be479580800013d608a236b6d632937222fd03f582063161e4244e5adeb5}
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: 256Mb
+    volumes:
+      - anidoki_meili_data:/meili_data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: anidoki_redis_cache
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6380:6379"
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - anidoki_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: anidoki_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: anidoki_db
+      POSTGRES_USER: anidoki_user
+      POSTGRES_PASSWORD: anidoki_secure_pass_2026
+    ports:
+      - "5438:5432"
+    volumes:
+      - anidoki_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anidoki_user -d anidoki_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  anidoki_meili_data:
+    driver: local
+  anidoki_redis_data:
+    driver: local
+  anidoki_pgdata:
+    driver: local

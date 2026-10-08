@@ -1,0 +1,27 @@
+{
+  "name": "AniDoki — Xem Anime Vietsub Online Full HD",
+  "short_name": "AniDoki",
+  "description": "Nền tảng xem anime online độ nét cao, giao diện chuẩn điện ảnh, vietsub mượt mà và cập nhật nhanh nhất.",
+  "start_url": "https://anidoki.com/",
+  "scope": "https://anidoki.com/",
+  "display": "standalone",
+  "background_color": "#101114",
+  "theme_color": "#101114",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
