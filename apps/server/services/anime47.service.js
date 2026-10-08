@@ -4,6 +4,7 @@ import { kkRequest, mapMovie, extractEpisodes } from './kkphim.service.js';
 import { nguoncRequest, extractNguoncEpisodes } from './nguonc.service.js';
 import { createHash } from 'node:crypto';
 import { validEmbed, validAnime47WatchUrl } from '../../../shared/providers.js';
+import { anime47Session, anime47ApiHeaders } from './anime47Session.service.js';
 
 const cache = new Map();
 const pending = new Map();
@@ -12,7 +13,7 @@ const episodesCache = new Map();
 let sessionFingerprint = '';
 
 function sessionHeaders() {
-  const token = (process.env.ANIME47_ACCESS_TOKEN || '').trim().replace(/^Bearer\s+/i, '');
+  const token = anime47Session.token();
   const fingerprint = createHash('sha256').update(token).digest('hex');
   if (fingerprint !== sessionFingerprint) {
     cache.clear();
@@ -75,8 +76,9 @@ function calculateSimilarity(str1, str2) {
  * Gửi HTTP request tới Anime47 API có cache và timeout
  */
 export async function anime47Request(path) {
-  const auth = sessionHeaders();
   if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Đường dẫn Anime47 không hợp lệ');
+  await anime47Session.ensure();
+  const auth = sessionHeaders();
   const requestKey = sessionFingerprint + ':' + path;
   const hit = cache.get(path);
   if (hit?.until > Date.now()) return hit.data;
@@ -84,17 +86,25 @@ export async function anime47Request(path) {
 
   const task = (async () => {
     const url = 'https://anime47.love/api' + path;
-    const response = await fetch(url, {
+    const load = headers => fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': 'https://anime47.best/',
-        'Origin': 'https://anime47.best',
-        'Accept': 'application/json, text/plain, */*',
-        ...auth
+        ...anime47ApiHeaders,
+        ...headers
       },
       redirect: 'error',
       signal: AbortSignal.timeout(12000)
     });
+    let response = await load(auth);
+    if (response.status === 401) {
+      await response.body?.cancel();
+      const rejectedToken = (auth.Authorization || '').replace(/^Bearer\s+/i, '');
+      const token = await anime47Session.refresh(rejectedToken);
+      if (token && token !== rejectedToken) {
+        response = await load(sessionHeaders());
+      } else {
+        throw Object.assign(new Error('Anime47 yêu cầu đăng nhập để xem nội dung.'), { status: 401, code: 'PRIVATE_MODE' });
+      }
+    }
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -328,7 +338,7 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
 
   let nativeEpisodes = [];
   // Resolve authenticated episode metadata; video URLs are fetched on demand.
-  if (process.env.ANIME47_ACCESS_TOKEN?.trim() && anime.sourceId) {
+  if (anime47Session.configured() && anime.sourceId) {
     try {
       const data = await a47('/anime/' + encodeURIComponent(anime.sourceId) + '/episodes');
       nativeEpisodes = extractAnime47Episodes(data);
@@ -487,7 +497,7 @@ export async function resolveEpisodesForAnime47(anime, requests = {}) {
       if (error.code === 'PRIVATE_MODE' || error.status === 401 || error.status === 403) {
         unavailable = {
           code: 'SOURCE_LOGIN_REQUIRED',
-          message: process.env.ANIME47_ACCESS_TOKEN?.trim()
+          message: anime47Session.configured()
             ? 'Phiên Anime47 đã hết hạn hoặc không có quyền truy cập. Hãy cập nhật token đăng nhập trên máy chủ.'
             : 'Anime47 yêu cầu đăng nhập để truy cập tập phim. Hiện chưa có nguồn Vietsub dự phòng cho phim này.'
         };

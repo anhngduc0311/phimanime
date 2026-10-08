@@ -7,7 +7,11 @@ let host = 'anime47.love';
 try {
   const id = process.argv[2] || '11322';
   if (!/^\d+$/.test(id)) throw new Error('Expected numeric anime ID');
-  console.log(JSON.stringify({ runtime: process.version, tokenConfigured: Boolean(process.env.ANIME47_ACCESS_TOKEN?.trim()) }));
+  console.log(JSON.stringify({
+    runtime: process.version,
+    tokenConfigured: Boolean(process.env.ANIME47_ACCESS_TOKEN?.trim()),
+    refreshTokenConfigured: Boolean(process.env.ANIME47_REFRESH_TOKEN?.trim())
+  }));
   const episode = extractAnime47Episodes(await anime47Request('/anime/' + id + '/episodes'))[0];
   if (!episode) throw new Error('No episodes');
   const source = await anime47EpisodeSource(episode.id);

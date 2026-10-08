@@ -34,6 +34,37 @@ test('real episode IDs are sorted and deduplicated across teams, without synthes
   assert.deepEqual(extractAnime47Episodes({}), []);
 });
 
+test('401 refreshes and retries once, with the new session used by later requests', async t => {
+  const previousAccess = process.env.ANIME47_ACCESS_TOKEN;
+  const previousRefresh = process.env.ANIME47_REFRESH_TOKEN;
+  const previousFile = process.env.ANIME47_SESSION_FILE;
+  let refreshes = 0;
+  let reads = 0;
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (url.endsWith('/auth/refresh-token')) {
+      refreshes++;
+      assert.deepEqual(JSON.parse(options.body), { refresh_token: 'retry-refresh' });
+      return { ok: true, json: async () => ({ access_token: 'retry-renewed', refresh_token: 'retry-rotated', expires_in: 3600 }) };
+    }
+    reads++;
+    if (options.headers.Authorization === 'Bearer retry-old') return { ok: false, status: 401 };
+    assert.equal(options.headers.Authorization, 'Bearer retry-renewed');
+    return { ok: true, json: async () => ({ reads }) };
+  });
+  try {
+    process.env.ANIME47_ACCESS_TOKEN = 'retry-old';
+    process.env.ANIME47_REFRESH_TOKEN = 'retry-refresh';
+    process.env.ANIME47_SESSION_FILE = '';
+    assert.deepEqual(await anime47Request('/retry-regression'), { reads: 2 });
+    assert.deepEqual(await anime47Request('/retry-regression-next'), { reads: 3 });
+    assert.equal(refreshes, 1);
+  } finally {
+    for (const [key, value] of [['ANIME47_ACCESS_TOKEN', previousAccess], ['ANIME47_REFRESH_TOKEN', previousRefresh], ['ANIME47_SESSION_FILE', previousFile]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test('authenticated metadata uses Anime47 IDs and does not run unrelated provider searches', async () => {
   const previous = process.env.ANIME47_ACCESS_TOKEN;
   try {

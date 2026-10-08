@@ -71,6 +71,21 @@ npm install
 
 Đây là cách làm rối mã, không phải mã hoá bảo mật: trình duyệt có thể giải mã và người dùng vẫn xem được DOM trong Elements. Nội dung giao diện cần JavaScript để hiển thị; công cụ chỉ đọc HTML thô sẽ không thấy các liên kết và nội dung trong body. Không đặt mật khẩu hoặc dữ liệu bí mật trong HTML này.
 
+### Tự làm mới phiên Anime47
+
+Đặt `ANIME47_REFRESH_TOKEN` trong `.env` từ Local Storage của phiên Anime47 đang đăng nhập. `ANIME47_ACCESS_TOKEN` là tùy chọn khi có refresh token. Máy chủ gọi `POST https://anime47.love/api/auth/refresh-token` trước khi access token hết hạn một phút, hoặc thử làm mới và gửi lại đúng một lần khi API trả 401. Các yêu cầu đồng thời dùng chung một lần làm mới.
+
+Docker lưu access token và refresh token được xoay vòng trong volume `anidoki_anime47_session`, để khởi động lại container không quay về token cũ. Giữ volume này khi cập nhật máy chủ. Khi đổi token cấu hình trong `.env`, phiên lưu cũ được bỏ qua. Với môi trường local, đặt `ANIME47_SESSION_FILE` trỏ tới một file trong thư mục riêng không commit, ví dụ `D:/phimanime/scratch/anime47/session.json`.
+
+Sau khi cập nhật mã nguồn và `.env` trên VPS:
+
+```bash
+docker compose up -d --build --no-deps --force-recreate server
+docker compose exec server node scripts/diagnoseAnime47.js 11322
+```
+
+Nếu refresh token bị thu hồi hoặc hết hạn, cần đăng nhập Anime47 và cập nhật token mới. Không đưa các token vào mã frontend, Git hay log.
+
 ### Tách tài nguyên sang static.anidoki.com
 
 Nginx đã có host riêng `static.anidoki.com` phục vụ cùng thư mục `dist`, có CORS cho JS modules và trả 404 cho trang HTML/API. Trong DevTools, JS/CSS và tài nguyên tĩnh sẽ nằm dưới host này; các trang và API vẫn dùng `anidoki.com`. Đây là cách phân phối tài nguyên, không phải cơ chế giấu mã frontend.

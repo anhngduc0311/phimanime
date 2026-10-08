@@ -24,6 +24,8 @@ services:
       PORT: 3000
       NODE_ENV: production
       ANIME47_ACCESS_TOKEN: ${ANIME47_ACCESS_TOKEN:-}
+      ANIME47_REFRESH_TOKEN: ${ANIME47_REFRESH_TOKEN:-}
+      ANIME47_SESSION_FILE: /app/session/anime47.json
       DATABASE_URL: postgresql://anidoki_user:anidoki_secure_pass_2026@postgres:5432/anidoki_db
       PGHOST: postgres
       PGPORT: 5432
@@ -36,6 +38,8 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@anidoki.com}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - anidoki_anime47_session:/app/session
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -99,6 +103,8 @@ services:
       retries: 5
 
 volumes:
+  anidoki_anime47_session:
+    driver: local
   anidoki_meili_data:
     driver: local
   anidoki_redis_data:
