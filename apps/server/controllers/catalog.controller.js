@@ -245,14 +245,22 @@ export const CatalogController = {
       const movie = anime_id.startsWith('anime47-') ? await anime47Detail(anime_id) : await movieDetail(anime_id);
       const ep = (movie.episodes || []).find(ep => ep.number === Number(episode_number));
 
-      if (provider === 'AniDoki' && ep?.stream) {
+      if (!ep) {
+        return res.status(404).json({
+          success: false,
+          code: movie.playbackUnavailable?.code || 'EPISODE_UNAVAILABLE',
+          message: movie.playbackUnavailable?.message || 'Nguồn này chưa có tập Vietsub được yêu cầu.'
+        });
+      }
+
+      if (provider === 'AniDoki' && ep.stream) {
         return res.json({ success: true, type: 'hls', provider: 'AniDoki', language: 'vi', stream_url: ep.stream });
       }
-      if (provider === 'NguonC' && ep?.embed) {
+      if (provider === 'NguonC' && ep.embed) {
         return res.json({ success: true, type: 'embed', provider: 'NguonC', language: 'vi', embed_url: ep.embed });
       }
 
-      if (ep?.sourceEpisodeId && (!provider || provider === 'Anime47')) {
+      if (ep.sourceEpisodeId && (!provider || provider === 'Anime47' || (!ep.stream && !ep.embed))) {
         try {
           const source = await anime47EpisodeSource(ep.sourceEpisodeId);
           if (source.type === 'hls') source.stream_url = anime47MediaUrl(source.stream_url);
@@ -267,16 +275,21 @@ export const CatalogController = {
           }
         }
       }
-      if (!ep || (!ep.stream && !ep.embed)) {
-        return res.status(404).json({
-          success: false,
-          code: movie.playbackUnavailable?.code || 'EPISODE_UNAVAILABLE',
-          message: movie.playbackUnavailable?.message || 'Nguồn này chưa có tập Vietsub được yêu cầu.'
-        });
+
+      if (ep.stream) {
+        const streamProvider = movie.streamProvider || (movie.source || 'AniDoki');
+        return res.json({ success: true, type: 'hls', provider: streamProvider, language: 'vi', stream_url: ep.stream });
       }
-      const streamProvider = movie.streamProvider || (ep.stream ? 'AniDoki' : (ep.embed?.includes('streamc') ? 'NguonC' : (movie.source || 'AniDoki')));
-      if (ep.stream) return res.json({ success: true, type: 'hls', provider: streamProvider, language: 'vi', stream_url: ep.stream });
-      res.json({ success: true, type: 'embed', provider: streamProvider, language: 'vi', embed_url: ep.embed });
+      if (ep.embed) {
+        const streamProvider = movie.streamProvider || (ep.embed.includes('streamc') ? 'NguonC' : (movie.source || 'AniDoki'));
+        return res.json({ success: true, type: 'embed', provider: streamProvider, language: 'vi', embed_url: ep.embed });
+      }
+
+      return res.status(404).json({
+        success: false,
+        code: movie.playbackUnavailable?.code || 'EPISODE_UNAVAILABLE',
+        message: movie.playbackUnavailable?.message || 'Nguồn này chưa có tập Vietsub được yêu cầu.'
+      });
     } catch (err) {
       const status = err.status && [400, 401, 403, 404, 409, 429].includes(err.status) ? err.status : 502;
       res.status(status).json({ success: false, message: err.message || 'Không thể phát tập phim này' });

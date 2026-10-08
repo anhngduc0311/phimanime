@@ -53,7 +53,7 @@ export async function openPlayerByRoute(animeId, episodeNumber = 1) {
 async function openPlayer(anime, episodeIndex = 0, resumeTime = 0, pushRoute = true) {
   state.currentVideoAnime = anime;
   state.currentEpisodeIndex = episodeIndex;
-  activeProvider = anime.source || 'AniDoki';
+  activeProvider = anime.source || (anime.id?.startsWith('anime47-') ? 'Anime47' : 'AniDoki');
   void renderSourceChoices(anime, state.currentEpisodes[episodeIndex]?.number || 1);
 
   // Đảm bảo nạp đầy đủ danh sách tập từ API nếu chưa có
@@ -181,7 +181,8 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
         video.appendChild(track);
       }
       video.style.display = 'block';
-      document.getElementById('player-source-label').textContent = `${data.provider} • Phụ đề Việt`;
+      if (data.provider) activeProvider = data.provider;
+      document.getElementById('player-source-label').textContent = `${data.provider || activeProvider} • Phụ đề Việt`;
       video.onloadedmetadata = () => {
         if (requestId !== streamRequest) return;
         if (resumeTime > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - 1));
