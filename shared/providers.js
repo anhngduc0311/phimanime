@@ -11,6 +11,14 @@ export function validEmbed(value, provider) {
   } catch { return false; }
 }
 
+export function validAnime47WatchUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.origin === 'https://anime47.best' && !url.username && !url.password &&
+      /^\/xem\/[a-z0-9-]+\/ep-\d+-\d+$/.test(url.pathname);
+  } catch { return false; }
+}
+
 const bookwormBase = 'honzuki-no-gekokujou-shisho-ni-naru-tame-ni-wa-shudan-wo-erandeiraremasen';
 const bookwormSeasons = {
   'co-nang-mot-sach': 4,

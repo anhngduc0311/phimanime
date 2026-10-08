@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allowedAnime47Media, anime47MediaUrl, rewriteAnime47Playlist, serveAnime47Media, unwrapAnime47Segment } from './services/anime47Media.service.js';
+import { allowedAnime47Media, anime47MediaUrl, rewriteAnime47Playlist, serveAnime47Media, unwrapAnime47Segment, fetchAnime47Media, anime47MediaHeaders } from './services/anime47Media.service.js';
+
+test('media requests supply player headers and range without forwarding account credentials', () => {
+  const headers = anime47MediaHeaders('bytes=0-1023');
+  assert.equal(headers.Origin, 'https://anime47.best');
+  assert.match(headers['User-Agent'], /Mozilla/);
+  assert.equal(headers.Range, 'bytes=0-1023');
+  assert.equal(headers.Authorization, undefined);
+  assert.equal(headers.Cookie, undefined);
+});
 
 test('media tickets only accept HTTPS on observed Anime47 media hosts', () => {
   for (const url of ['http://pl.vlogphim.net/a.ts', 'https://127.0.0.1/a.ts', 'https://pl.vlogphim.net.evil.example/a.ts', 'https://user:pass@pl.vlogphim.net/a.ts', 'https://pl.vlogphim.net:8443/a.ts']) {
@@ -40,4 +49,32 @@ test('PNG covers of different sizes are removed only when MPEG-TS packet alignme
   const falseSync = Buffer.alloc(188 * 10);
   falseSync[5] = 0x47;
   assert.throws(() => unwrapAnime47Segment(falseSync));
+});
+
+test('a blocked CDN falls back to another verified mirror and avoids the blocked host for subsequent segments', async () => {
+  const blocked = new Map();
+  const hosts = [];
+  const request = async (value, options) => {
+    const url = new URL(value);
+    hosts.push(url.hostname);
+    assert.equal(url.pathname, '/movie/segment.png');
+    assert.equal(options.headers.Authorization, undefined);
+    return { status: url.hostname === 'cdn1.nonprofit.asia' ? 403 : 200, body: { cancel: async () => {} } };
+  };
+  const options = { headers: { Origin: 'https://anime47.best' } };
+  const result = await fetchAnime47Media('https://cdn1.nonprofit.asia/movie/segment.png', options, request, blocked);
+  assert.equal(result.response.status, 200);
+  assert.equal(new URL(result.target).hostname, 'cdn2.nonprofit.asia');
+  await fetchAnime47Media('https://cdn1.nonprofit.asia/movie/segment.png', options, request, blocked);
+  assert.deepEqual(hosts, ['cdn1.nonprofit.asia', 'cdn2.nonprofit.asia', 'cdn2.nonprofit.asia']);
+});
+
+test('all mirrors denying access produces an explicit error without repeated denied requests', async () => {
+  const blocked = new Map();
+  let calls = 0;
+  const request = async () => { calls++; return { status: 403, body: { cancel: async () => {} } }; };
+  await assert.rejects(fetchAnime47Media('https://cdn1.nonprofit.asia/video.png', {}, request, blocked), { code: 'CDN_ACCESS_DENIED' });
+  assert.equal(calls, 7);
+  await assert.rejects(fetchAnime47Media('https://cdn1.nonprofit.asia/video.png', {}, request, blocked), { code: 'CDN_ACCESS_DENIED' });
+  assert.equal(calls, 7);
 });

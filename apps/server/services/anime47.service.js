@@ -3,7 +3,7 @@ import { seriesKey, seriesTitle, seasonNumber } from '../../../shared/series.js'
 import { kkRequest, mapMovie, extractEpisodes } from './kkphim.service.js';
 import { nguoncRequest, extractNguoncEpisodes } from './nguonc.service.js';
 import { createHash } from 'node:crypto';
-import { validEmbed } from '../../../shared/providers.js';
+import { validEmbed, validAnime47WatchUrl } from '../../../shared/providers.js';
 
 const cache = new Map();
 const pending = new Map();
@@ -511,6 +511,13 @@ export async function anime47EpisodeSource(id, request = anime47Request) {
   if (!/^\d+$/.test(String(id))) throw new Error('Mã tập Anime47 không hợp lệ');
   const payload = await request('/anime/watch/episode/' + id);
   const episode = payload?.data || payload;
+  let watchUrl = null;
+  if (episode?.canonical_url) {
+    try {
+      const url = new URL(episode.canonical_url, 'https://anime47.best');
+      if (validAnime47WatchUrl(url.href)) watchUrl = url.href;
+    } catch {}
+  }
   const streams = [...(episode?.streams || [])].sort((a, b) => Number(b.is_default || 0) - Number(a.is_default || 0));
   for (const source of streams) {
     let url;
@@ -522,9 +529,9 @@ export async function anime47EpisodeSource(id, request = anime47Request) {
         .filter(track => { try { const u = new URL(track.file); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; } })
         .map(track => ({ label: track.label || 'Tiếng Việt', file: track.file }));
       if (source.subtitles?.length && !subtitles.length) continue;
-      return { success: true, provider: 'Anime47', type: 'hls', language: 'vi', stream_url: url.href, subtitles };
+      return { success: true, provider: 'Anime47', type: 'hls', language: 'vi', stream_url: url.href, subtitles, watch_url: watchUrl };
     }
-    if (validEmbed(url.href, 'Anime47')) return { success: true, provider: 'Anime47', type: 'embed', language: 'vi', embed_url: url.href };
+    if (validEmbed(url.href, 'Anime47')) return { success: true, provider: 'Anime47', type: 'embed', language: 'vi', embed_url: url.href, watch_url: watchUrl };
   }
   throw Object.assign(new Error('Tập Anime47 chưa có nguồn Vietsub tương thích hoặc tài khoản chưa có quyền xem.'), { status: 404 });
 }

@@ -4,7 +4,7 @@ import { router } from '../router.js';
 import { showToast, formatTime } from '../utils/ui.js';
 import { openAnimeDetail } from './DetailView.js';
 import { loadContinueWatching } from './HomeView.js';
-import { validEmbed } from '../../../../shared/providers.js';
+import { validEmbed, validAnime47WatchUrl } from '../../../../shared/providers.js';
 import { setPlayerSEO } from '../utils/seo.js';
 
 // CINEMA VIDEO PLAYER (ANIDOKI EMBED)
@@ -14,6 +14,7 @@ let lastProgressSave = 0;
 let activeProvider = 'AniDoki';
 let activeLanguage = 'sub';
 let hlsPlayer = null;
+let sourceWatchUrl = null;
 
 
 export async function openPlayerByRoute(animeId, episodeNumber = 1) {
@@ -136,6 +137,7 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
   const controls = document.getElementById('player-controls');
 
   const requestId = ++streamRequest;
+  sourceWatchUrl = null;
   hlsPlayer?.destroy();
   hlsPlayer = null;
   video.onloadedmetadata = null;
@@ -159,6 +161,7 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
     const data = await res.json();
     if (requestId !== streamRequest) return;
     if (!res.ok || !data.success) throw new Error(data.message || 'Tập hoặc ngôn ngữ này chưa có nguồn phát.');
+    if (data.provider === 'Anime47' && validAnime47WatchUrl(data.watch_url)) sourceWatchUrl = data.watch_url;
     if (data.type === 'hls') {
       const streamUrl = new URL(data.stream_url, window.location.origin);
       const localAnime47 = data.provider === 'Anime47' && streamUrl.origin === window.location.origin &&
@@ -198,7 +201,9 @@ async function loadLiveAnimeStream(animeId, episodeNumber, provider, language, r
             console.warn('Direct playback failed:', error.details);
             hlsPlayer?.destroy();
             hlsPlayer = null;
-            showPlayerNotice('Không tải được video trực tiếp. Hãy thử lại hoặc chọn nguồn khác.');
+            showPlayerNotice(data.provider === 'Anime47' && error.response?.code === 503
+              ? 'CDN Anime47 từ chối tải video qua máy chủ này. Bạn có thể mở tập trực tiếp trên Anime47 bằng phiên đăng nhập của mình.'
+              : 'Không tải được video trực tiếp. Hãy thử lại hoặc chọn nguồn khác.');
           }
         });
         hlsPlayer.loadSource(streamUrl.href);
@@ -284,6 +289,15 @@ function showPlayerNotice(message) {
     </div>
   `;
   notice.querySelector('.notice-desc').textContent = message;
+  if (sourceWatchUrl && validAnime47WatchUrl(sourceWatchUrl)) {
+    const link = document.createElement('a');
+    link.href = sourceWatchUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.className = 'notice-retry-btn';
+    link.textContent = 'Mở tập trên Anime47';
+    notice.querySelector('.notice-actions').appendChild(link);
+  }
   notice.style.display = 'flex';
 
   document.getElementById('notice-retry-btn')?.addEventListener('click', () => {

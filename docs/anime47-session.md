@@ -23,3 +23,7 @@ Máy chủ tải HLS qua các đường dẫn media có mã ngẫu nhiên để 
 Đặt `ANIME47_ACCESS_TOKEN` vào `.env` trên VPS, rồi chạy `docker compose up -d --build server web`. Docker Compose truyền token vào backend; image không chứa `.env` hay token. Nginx đã chuyển `/api/` tới backend, bao gồm các đường tải media.
 
 Khi thay token, chạy `docker compose up -d --force-recreate server` để nạp giá trị mới. Token không tự gia hạn. Cần kiểm tra phát phim thực tế trên VPS vì Anime47 hoặc CDN có thể áp dụng hạn chế IP/phiên khác máy local. Mọi người xem nguồn này trên website đều dùng phiên cấu hình ở backend, và dữ liệu video đi qua băng thông VPS.
+
+Nếu các CDN trả 403 từ VPS, token hợp lệ vẫn không đảm bảo tải được video. Máy chủ thử các mirror đã kiểm tra, rồi trả `CDN_ACCESS_DENIED` nếu tất cả từ chối. Player cung cấp link mở tập trực tiếp trên Anime47 để người xem dùng phiên trình duyệt của họ. Không chuyển token của backend vào link này.
+
+Chẩn đoán từ container: `docker compose exec -T server node scripts/diagnoseAnime47.js`. Log chỉ in host, mã trạng thái và dạng dữ liệu, không in token hoặc URL video có chữ ký.

@@ -57,7 +57,7 @@ test('authenticated metadata uses Anime47 IDs and does not run unrelated provide
 test('episode source selects supported HLS and exposes Vietnamese subtitles without credentials', async () => {
   const result = await anime47EpisodeSource('101', async path => {
     assert.equal(path, '/anime/watch/episode/101');
-    return { streams: [
+    return { canonical_url: '/xem/kanojo-no-tomodachi-11322/ep-1-126083', streams: [
       { player_type: 'hls', url: 'http://video.example/unsafe.m3u8' },
       { player_type: 'jwplayer', url: 'https://video.example/1.m3u8', subtitles: [
         { label: 'English', file: 'https://video.example/en.vtt' },
@@ -66,6 +66,7 @@ test('episode source selects supported HLS and exposes Vietnamese subtitles with
     ] };
   });
   assert.equal(result.type, 'hls');
+  assert.equal(result.watch_url, 'https://anime47.best/xem/kanojo-no-tomodachi-11322/ep-1-126083');
   assert.deepEqual(result.subtitles, [{ label: 'Vietnamese', file: 'https://video.example/vi.vtt' }]);
   assert.equal(result.Authorization, undefined);
 });
