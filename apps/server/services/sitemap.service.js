@@ -1,3 +1,4 @@
+import { publicAnimeId } from '../../../shared/animeUrls.js';
 import { listing, genreOptions } from './kkphim.service.js';
 import { AdminAnimeModel } from '../models/adminAnime.model.js';
 
@@ -214,7 +215,7 @@ export async function generateAnimeSitemap() {
     // URL trang chi tiết anime
     xml += `
   <url>
-    <loc>${DOMAIN}/anime/${escapeXml(a.id)}</loc>
+    <loc>${DOMAIN}/anime/${escapeXml(publicAnimeId(a.id))}</loc>
     <lastmod>${cleanDate}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>`;
@@ -234,7 +235,7 @@ export async function generateAnimeSitemap() {
     // URL xem tập đầu tiên
     xml += `
   <url>
-    <loc>${DOMAIN}/watch/${escapeXml(a.id)}/1</loc>
+    <loc>${DOMAIN}/watch/${escapeXml(publicAnimeId(a.id))}/1</loc>
     <lastmod>${cleanDate}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>

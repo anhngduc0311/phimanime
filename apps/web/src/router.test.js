@@ -59,3 +59,26 @@ test('Reject external return URLs', () => {
   router.returnFromDetail();
   assert.equal(window.location.pathname, '/');
 });
+
+test('Provider URLs use anido while route handlers retain the history identity', () => {
+  const router = setup();
+  router.navigate('/watch/anime47-trinity-seven-movie-2/1?language=vi');
+  assert.equal(window.location.pathname, '/watch/anido-trinity-seven-movie-2/1');
+  assert.equal(window.location.search, '?language=vi');
+  assert.equal(router.currentRoute.params.slug, 'anime47-trinity-seven-movie-2');
+  assert.equal(router.currentRoute.params.episode, '1');
+  router.returnFromDetail();
+  assert.equal(window.location.pathname + window.location.search, '/browse?category=hanh-dong&page=2');
+});
+
+test('Old bookmarks are replaced without losing history state, and new URLs reload', () => {
+  const router = setup('/anime/anime47-example?language=vi');
+  window.history.state = { detailReturnTo: { url: '/browse?page=3', scrollY: 42 } };
+  router.handleRoute();
+  assert.equal(window.location.pathname, '/anime/anido-example');
+  assert.equal(window.location.search, '?language=vi');
+  assert.equal(window.history.state.detailReturnTo.scrollY, 42);
+  assert.equal(router.currentRoute.pathname, '/anime/anime47-example');
+  router.handleRoute();
+  assert.equal(router.currentRoute.params.slug, 'anime47-example');
+});

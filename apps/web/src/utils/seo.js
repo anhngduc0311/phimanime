@@ -1,3 +1,4 @@
+import { publicAnimeId } from '../../../../shared/animeUrls.js';
 const DOMAIN = 'https://anidoki.com';
 const SITE_NAME = 'AniDoki';
 const DEFAULT_IMAGE = `${DOMAIN}/brand/anidoki-white.svg`;
@@ -268,7 +269,7 @@ export function setAnimeDetailSEO(anime) {
   const description = `Xem phim ${displayName}${subName} Vietsub Full HD mới nhất. ${synopsisExcerpt ? synopsisExcerpt + ' ' : ''}Đánh giá ⭐ ${scoreVal}/10. Xem ngay tại AniDoki!`;
 
   const poster = anime.coverImage || anime.bannerImage || DEFAULT_IMAGE;
-  const canonical = `${DOMAIN}/anime/${anime.id}`;
+  const canonical = `${DOMAIN}/anime/${publicAnimeId(anime.id)}`;
   const isTv = !anime.isMovie && anime.format !== 'MOVIE';
 
   // Schema TVSeries / Movie có AggregateRating kích hoạt hiển thị Sao Vàng trên Google Search
@@ -336,7 +337,7 @@ export function setPlayerSEO(anime, episodeNumber = 1) {
 
   const title = `Xem ${displayName} ${epText} Vietsub Full HD Mới Nhất | AniDoki`;
   const description = `Xem anime ${displayName} ${epText} Vietsub Full HD siêu nét, âm thanh sống động, load nhanh không giật lag. Xem phim hoạt hình online bản đẹp miễn phí tại AniDoki!`;
-  const canonical = `${DOMAIN}/watch/${anime.id}/${episodeNumber}`;
+  const canonical = `${DOMAIN}/watch/${publicAnimeId(anime.id)}/${episodeNumber}`;
   const poster = anime.coverImage || anime.bannerImage || DEFAULT_IMAGE;
 
   const episodeSchema = {
@@ -349,7 +350,7 @@ export function setPlayerSEO(anime, episodeNumber = 1) {
     'partOfSeries': {
       '@type': 'TVSeries',
       'name': displayName,
-      'url': `${DOMAIN}/anime/${anime.id}`
+      'url': `${DOMAIN}/anime/${publicAnimeId(anime.id)}`
     }
   };
 
@@ -357,7 +358,7 @@ export function setPlayerSEO(anime, episodeNumber = 1) {
     '@type': 'BreadcrumbList',
     'itemListElement': [
       { '@type': 'ListItem', 'position': 1, 'name': 'Trang chủ', 'item': `${DOMAIN}/` },
-      { '@type': 'ListItem', 'position': 2, 'name': displayName, 'item': `${DOMAIN}/anime/${anime.id}` },
+      { '@type': 'ListItem', 'position': 2, 'name': displayName, 'item': `${DOMAIN}/anime/${publicAnimeId(anime.id)}` },
       { '@type': 'ListItem', 'position': 3, 'name': epText, 'item': canonical }
     ]
   };

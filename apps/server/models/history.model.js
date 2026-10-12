@@ -63,6 +63,10 @@ export const HistoryModel = {
     await pool.query('DELETE FROM kk_history WHERE user_id = $1 AND slug = $2', [userId, animeId]);
   },
 
+  async updateMetadata(userId, animeId, anime) {
+    await pool.query('UPDATE kk_history SET anime = $3 WHERE user_id = $1 AND slug = $2', [userId, animeId, JSON.stringify(anime)]);
+  },
+
   async clearAllHistory(userId) {
     await pool.query('DELETE FROM kk_history WHERE user_id = $1', [userId]);
   }

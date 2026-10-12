@@ -1,3 +1,4 @@
+import { publicAnimeId } from '../../../../shared/animeUrls.js';
 import { AniDokiAPI } from '../api.js';
 import { state } from '../store/state.js';
 import { router } from '../router.js';
@@ -357,7 +358,7 @@ export function initDetailEvents() {
 
   document.getElementById('detail-share-btn')?.addEventListener('click', () => {
     if (state.currentDetailAnime) {
-      const shareUrl = `${window.location.origin}/anime/${state.currentDetailAnime.id}`;
+      const shareUrl = `${window.location.origin}/anime/${publicAnimeId(state.currentDetailAnime.id)}`;
       navigator.clipboard.writeText(shareUrl).then(() => {
         showToast('Đã sao chép liên kết chia sẻ!');
       }).catch(() => {

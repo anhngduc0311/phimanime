@@ -132,7 +132,10 @@ export async function movieDetail(slug) {
   }
 
   let anime;
-  if (slug.startsWith('nguonc-')) {
+  if (slug.startsWith('anime47-')) {
+    const { anime47Detail } = await import('./anime47.service.js');
+    anime = await anime47Detail(slug);
+  } else if (slug.startsWith('nguonc-')) {
     anime = await nguoncDetail(slug);
   } else {
     const detail = await kkRequest('/phim/' + slug);

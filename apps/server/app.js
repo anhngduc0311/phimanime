@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { apiRouter } from './routes/index.js';
 import { seoRouter } from './routes/seo.routes.js';
+import { publicAnimeUrl } from '../../shared/animeUrls.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,11 @@ export const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  const canonical = publicAnimeUrl(req.originalUrl);
+  if (req.method === 'GET' && canonical !== req.originalUrl) return res.redirect(301, canonical);
+  next();
+});
 
 // Dynamic Sitemap & Robots.txt
 app.use(seoRouter);

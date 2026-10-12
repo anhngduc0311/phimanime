@@ -1,3 +1,5 @@
+import { publicAnimeUrl, internalAnimeUrl } from '../../../shared/animeUrls.js';
+
 // Router cho Single Page Application (SPA) AniDoki
 // Hỗ trợ URL trực tiếp, Back/Forward, Tải lại trang, và Dynamic URL segments
 
@@ -48,6 +50,7 @@ export class Router {
   }
 
   navigate(url, replace = false, scrollY = 0) {
+    url = publicAnimeUrl(url);
     const currentUrl = window.location.pathname + window.location.search;
     const isDetail = path => /^\/(anime|watch)\//.test(path);
     const returnTo = isDetail(url)
@@ -69,7 +72,10 @@ export class Router {
   }
 
   handleRoute(fullUrl = window.location.pathname + window.location.search, scrollY = 0) {
-    const [pathname, searchStr] = fullUrl.split('?');
+    const publicUrl = publicAnimeUrl(fullUrl);
+    if (publicUrl !== fullUrl) window.history.replaceState(window.history.state, '', publicUrl);
+    // Views and persisted history continue using the original provider identity.
+    const [pathname, searchStr] = internalAnimeUrl(publicUrl).split('?');
     const searchParams = new URLSearchParams(searchStr || '');
 
     for (const route of this.routes) {

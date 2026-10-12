@@ -1,5 +1,6 @@
 import { HistoryModel } from '../models/history.model.js';
 import { movieDetail, slugOK } from '../services/kkphim.service.js';
+import { historyFallback, repairHistoryMetadata } from '../services/historyMetadata.service.js';
 
 export const HistoryController = {
   async getHistory(req, res) {
@@ -8,7 +9,7 @@ export const HistoryController = {
       const { items, pagination } = await HistoryModel.getHistory(req.user.id, { page, limit });
       res.json({
         success: true,
-        data: items,
+        data: await repairHistoryMetadata(items, movieDetail, (id, anime) => HistoryModel.updateMetadata(req.user.id, id, anime)),
         pagination
       });
     } catch (err) {
@@ -32,13 +33,7 @@ export const HistoryController = {
       try {
         anime = await movieDetail(animeId);
       } catch {
-        anime = {
-          id: animeId,
-          title: { vietnamese: animeId, english: animeId },
-          coverImage: '/poster-placeholder.svg',
-          bannerImage: '/poster-placeholder.svg',
-          episodes: [{ number: epNum, title: `Tập ${epNum}` }]
-        };
+        anime = historyFallback(animeId);
       }
 
       await HistoryModel.saveProgress(req.user.id, animeId, anime, epNum, currentTime, duration);
