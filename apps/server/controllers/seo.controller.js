@@ -47,5 +47,18 @@ export const SeoController = {
       console.error('Error generating anime sitemap:', err);
       res.status(500).send('Error generating sitemap');
     }
+  },
+
+  async getAnimeSitemapPage(req, res) {
+    try {
+      const page = parseInt(req.params.page, 10) || 1;
+      const xml = await generateAnimeSitemap(page);
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(xml);
+    } catch (err) {
+      console.error(`Error generating anime sitemap page ${req.params.page}:`, err);
+      res.status(500).send('Error generating sitemap');
+    }
   }
 };

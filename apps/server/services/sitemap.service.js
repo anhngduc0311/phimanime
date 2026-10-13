@@ -2,16 +2,16 @@ import { publicAnimeId } from '../../../shared/animeUrls.js';
 import { listing, genreOptions } from './kkphim.service.js';
 import { AdminAnimeModel } from '../models/adminAnime.model.js';
 
-let sitemapCache = new Map();
-let cacheExpiry = 0;
+const sitemapCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 giờ
 
 export function clearSitemapCache() {
   sitemapCache.clear();
-  cacheExpiry = 0;
 }
 
 const DOMAIN = process.env.SITE_URL || 'https://anidoki.com';
+const SITE_NAME = 'AniDoki';
+const DEFAULT_IMAGE = `${DOMAIN}/brand/anidoki-white.svg`;
 
 function escapeXml(str) {
   if (!str) return '';
@@ -24,7 +24,7 @@ function escapeXml(str) {
 }
 
 export function generateRobotsTxt() {
-  return `# robots.txt for AniDoki (https://anidoki.com)
+  return `# robots.txt for AniDoki (${DOMAIN})
 User-agent: *
 Allow: /
 Allow: /browse*
@@ -33,15 +33,27 @@ Allow: /watch/*
 Allow: /help
 Disallow: /admin*
 Disallow: /account*
-Disallow: /api/admin*
-Disallow: /api/account*
-Disallow: /api/auth*
+Disallow: /library*
+Disallow: /history*
+Disallow: /api/*
+
+User-agent: Googlebot-Image
+Allow: /
+Allow: /assets/*
+Allow: /brand/*
+Allow: /*.jpg$
+Allow: /*.jpeg$
+Allow: /*.png$
+Allow: /*.webp$
+Allow: /*.svg$
 
 # Sitemaps
 Sitemap: ${DOMAIN}/sitemap.xml
 Sitemap: ${DOMAIN}/sitemap-main.xml
 Sitemap: ${DOMAIN}/sitemap-genres.xml
 Sitemap: ${DOMAIN}/sitemap-anime.xml
+
+Host: ${DOMAIN.replace(/^https?:\/\//, '')}
 `;
 }
 
@@ -61,6 +73,18 @@ export function generateSitemapIndex() {
     <loc>${DOMAIN}/sitemap-anime.xml</loc>
     <lastmod>${now}</lastmod>
   </sitemap>
+  <sitemap>
+    <loc>${DOMAIN}/sitemap-anime-1.xml</loc>
+    <lastmod>${now}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${DOMAIN}/sitemap-anime-2.xml</loc>
+    <lastmod>${now}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${DOMAIN}/sitemap-anime-3.xml</loc>
+    <lastmod>${now}</lastmod>
+  </sitemap>
 </sitemapindex>`;
 }
 
@@ -73,11 +97,10 @@ export function generateMainSitemap() {
     { url: '/browse?sort=score', changefreq: 'daily', priority: '0.9' },
     { url: '/browse?status=ongoing', changefreq: 'daily', priority: '0.85' },
     { url: '/browse?status=completed', changefreq: 'daily', priority: '0.85' },
+    { url: '/browse?type=movie', changefreq: 'daily', priority: '0.85' },
     { url: '/browse?category=hanh-dong', changefreq: 'daily', priority: '0.85' },
     { url: '/browse?category=phieu-luu', changefreq: 'daily', priority: '0.85' },
     { url: '/browse?category=tinh-cam', changefreq: 'daily', priority: '0.85' },
-    { url: '/library', changefreq: 'weekly', priority: '0.6' },
-    { url: '/history', changefreq: 'monthly', priority: '0.4' },
     { url: '/help', changefreq: 'monthly', priority: '0.5' }
   ];
 
@@ -100,6 +123,11 @@ export function generateMainSitemap() {
 }
 
 export async function generateGenresSitemap() {
+  const cached = sitemapCache.get('sitemap-genres.xml');
+  if (cached && cached.expiry > Date.now()) {
+    return cached.data;
+  }
+
   const now = new Date().toISOString().split('T')[0];
   let genres = [];
   try {
@@ -137,59 +165,71 @@ export async function generateGenresSitemap() {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
 
   for (const g of genres) {
+    if (!g.slug) continue;
     xml += `
   <url>
     <loc>${DOMAIN}/browse?category=${encodeURIComponent(g.slug)}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
-    <priority>0.8</priority>
+    <priority>0.85</priority>
   </url>`;
   }
 
   xml += `
 </urlset>`;
+
+  sitemapCache.set('sitemap-genres.xml', { data: xml, expiry: Date.now() + CACHE_TTL_MS });
   return xml;
 }
 
-export async function generateAnimeSitemap() {
-  const cached = sitemapCache.get('sitemap-anime.xml');
-  if (cached && Date.now() < cacheExpiry) {
-    return cached;
+export async function generateAnimeSitemap(page = null) {
+  const cacheKey = page ? `sitemap-anime-${page}.xml` : 'sitemap-anime.xml';
+  const cached = sitemapCache.get(cacheKey);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.data;
   }
 
   let animeList = [];
+  const seen = new Set();
+
+  const addItems = (items) => {
+    if (Array.isArray(items)) {
+      items.forEach(item => {
+        if (item && item.id && !seen.has(item.id)) {
+          seen.add(item.id);
+          animeList.push(item);
+        }
+      });
+    }
+  };
+
   try {
-    // Thu thập danh sách anime từ nhiều trang danh mục
-    const [p1, p2, p3] = await Promise.allSettled([
-      listing({ page: '1', limit: '64' }),
-      listing({ page: '2', limit: '64' }),
-      listing({ page: '3', limit: '64' })
-    ]);
-
-    const seen = new Set();
-    const addItems = (res) => {
-      if (res.status === 'fulfilled' && Array.isArray(res.value?.items)) {
-        res.value.items.forEach(item => {
-          if (item && item.id && !seen.has(item.id)) {
-            seen.add(item.id);
-            animeList.push(item);
-          }
-        });
-      }
-    };
-
-    addItems(p1);
-    addItems(p2);
-    addItems(p3);
+    if (page) {
+      // Tải một trang cụ thể
+      const res = await listing({ page: String(page), limit: '64' });
+      addItems(res?.items);
+    } else {
+      // Tải nhiều trang cho sitemap chính tổng hợp
+      const pagesToFetch = ['1', '2', '3', '4', '5', '6'];
+      const results = await Promise.allSettled(
+        pagesToFetch.map(p => listing({ page: p, limit: '64' }))
+      );
+      results.forEach(res => {
+        if (res.status === 'fulfilled' && res.value?.items) {
+          addItems(res.value.items);
+        }
+      });
+    }
   } catch (err) {
-    console.warn('Sitemap anime listing error:', err);
+    console.warn('Sitemap anime fetch error:', err);
   }
 
   // Bổ sung các anime có override từ database
   try {
     const overrides = await AdminAnimeModel.getAllAnimeOverrides();
     overrides.forEach((ov, slug) => {
-      if (!ov.is_hidden && !animeList.some(a => a.id === slug)) {
+      if (!ov.is_hidden && !seen.has(slug)) {
+        seen.add(slug);
         animeList.push({
           id: slug,
           title: { vietnamese: ov.title_vietnamese, english: ov.title_english },
@@ -204,18 +244,20 @@ export async function generateAnimeSitemap() {
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">`;
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">`;
 
   for (const a of animeList) {
     if (!a.id) continue;
     const title = a.title?.vietnamese || a.title?.english || a.id;
     const cleanDate = a.updatedAt ? new Date(a.updatedAt).toISOString().split('T')[0] : defaultDate;
     const poster = a.coverImage || a.posterUrl;
+    const animeSlug = escapeXml(publicAnimeId(a.id));
 
     // URL trang chi tiết anime
     xml += `
   <url>
-    <loc>${DOMAIN}/anime/${escapeXml(publicAnimeId(a.id))}</loc>
+    <loc>${DOMAIN}/anime/${animeSlug}</loc>
     <lastmod>${cleanDate}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>`;
@@ -232,21 +274,34 @@ export async function generateAnimeSitemap() {
     xml += `
   </url>`;
 
-    // URL xem tập đầu tiên
+    // URL xem tập đầu tiên (kèm Google Video Sitemap Schema)
     xml += `
   <url>
-    <loc>${DOMAIN}/watch/${escapeXml(publicAnimeId(a.id))}/1</loc>
+    <loc>${DOMAIN}/watch/${animeSlug}/1</loc>
     <lastmod>${cleanDate}</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.85</priority>`;
+
+    if (poster && poster.startsWith('http')) {
+      xml += `
+    <video:video>
+      <video:thumbnail_loc>${escapeXml(poster)}</video:thumbnail_loc>
+      <video:title>Xem ${escapeXml(title)} Tập 1 Vietsub Full HD</video:title>
+      <video:description>Xem phim hoạt hình ${escapeXml(title)} Tập 1 bản đẹp Vietsub Full HD online tại AniDoki</video:description>
+      <video:player_loc>${DOMAIN}/watch/${animeSlug}/1</video:player_loc>
+      <video:publication_date>${cleanDate}T00:00:00+07:00</video:publication_date>
+      <video:family_friendly>yes</video:family_friendly>
+      <video:requires_subscription>no</video:requires_subscription>
+    </video:video>`;
+    }
+
+    xml += `
   </url>`;
   }
 
   xml += `
 </urlset>`;
 
-  sitemapCache.set('sitemap-anime.xml', xml);
-  cacheExpiry = Date.now() + CACHE_TTL_MS;
-
+  sitemapCache.set(cacheKey, { data: xml, expiry: Date.now() + CACHE_TTL_MS });
   return xml;
 }
